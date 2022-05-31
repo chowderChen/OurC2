@@ -17,6 +17,17 @@ bool IsInt( string str ) {
   return str.find_first_not_of( "0123456789" ) == string::npos;
 } // IsInt()
 
+/*
+bool IsChar( string str ) {
+  if ( str.length() == 1 ) {
+    if ( IsLetter( str[0] ) ) {
+      return true;
+    } // if
+  } // if
+
+  return false;
+} // IsChar()
+*/
 bool IsWhitespace( char ch ) {
   if ( ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' ) {
     return true;
@@ -54,12 +65,12 @@ bool IsSpecialSymbol( char ch ) {
 } // IsSpecialSymbol()
 
 enum TokenType {
-  ID, NUM,
-  END_OF_FILE, GE,
-  LE, GT, LT, S_COLON,
-  ASSIGN, EQ, NEQ,
-  PLUS, MINUS, MUL,
-  DIV, LPAREN, RPAREN
+  ID, CONSTANT, UNDEFINED_TYPE, 
+  GE, LE, // >= <=
+  EQ, NEQ, // == !=
+  AND, OR, // && ||
+  INT, FLOAT, CHAR,
+  STRING, BOOL
 };
 
 class Token {
@@ -73,11 +84,11 @@ public:
 
   void Init() {
     mValue = "";
-    mType = END_OF_FILE;
+    mType = UNDEFINED_TYPE;
   } // Init()
 
   bool IsEmpty() {
-    if ( mValue.compare( "" ) == 0 && mType == END_OF_FILE ) {
+    if ( mValue.compare( "" ) == 0 ) {
       return true;
     } // if
     else {
@@ -85,12 +96,6 @@ public:
     } // else
   } // IsEmpty()
 }; // class Token
-
-enum ErrorType {
-  LEXICAL_ERROR, // unrecognized token with first char
-  SYNTAXTICAL_ERROR, // unexpected token
-  SEMANTIC_ERROR // undefined identifier
-};
 
 class TokenScanner {
   bool mIsNewLine;
@@ -250,14 +255,35 @@ public:
 
       if ( IsLetter( tmpChar ) ) {
         GetRestOfID( tokenValue );
-        token.mType = ID;
+        if ( tokenValue == "true" || tokenValue == "false" ) {
+          token.mType = CONSTANT;
+        } // if
+        else if ( tokenValue == "int" ) {
+          token.mType = INT;
+        } // else if
+        else if ( tokenValue == "float" ) {
+          token.mType = FLOAT;
+        } // else if
+        else if ( tokenValue == "char" ) {
+          token.mType = CHAR;
+        } // else if
+        else if ( tokenValue == "string" ) {
+          token.mType = STRING;
+        } // else if
+        else if ( tokenValue == "bool" ) {
+          token.mType = BOOL;
+        } // else if
+        else {
+          token.mType = ID;
+        } // else
+
         getTokenSuces = true;
       } // if
       else if ( IsDigit( tmpChar )
         || ( tmpChar == '.' && PeekChar( tmpChar2 )
           && IsDigit( tmpChar2 ) ) ) {
         GetRestOfNum( tokenValue );
-        token.mType = NUM;
+        token.mType = CONSTANT;
         getTokenSuces = true;
       } // else if tmpChar == '.'
       else if ( tmpChar == ':' && PeekChar( tmpChar2 ) && tmpChar2 != '=' ) {
@@ -266,35 +292,11 @@ public:
       else if ( IsSpecialSymbol( tmpChar ) ) {
         GetRestOfSpecial( tokenValue );
         getTokenSuces = true;
-        if ( tokenValue == ":=" ) {
-          token.mType = ASSIGN;
-        } // if
-        else if ( tokenValue == ";" ) {
-          token.mType = S_COLON;
-        } // else if
-        else if ( tokenValue == "+" ) {
-          token.mType = PLUS;
-        } // else if
-        else if ( tokenValue == "-" ) {
-          token.mType = MINUS;
-        } // else if
-        else if ( tokenValue == "*" ) {
-          token.mType = MUL;
-        } // else if
-        else if ( tokenValue == "/" ) {
-          token.mType = DIV;
-        } // else if
-        else if ( tokenValue == "=" ) {
+        if ( tokenValue == "=" ) {
           token.mType = EQ;
         } // else if
         else if ( tokenValue == "<>" ) {
           token.mType = NEQ;
-        } // else if
-        else if ( tokenValue == ">" ) {
-          token.mType = GT;
-        } // else if
-        else if ( tokenValue == "<" ) {
-          token.mType = LT;
         } // else if
         else if ( tokenValue == ">=" ) {
           token.mType = GE;
@@ -302,16 +304,7 @@ public:
         else if ( tokenValue == "<=" ) {
           token.mType = LE;
         } // else if
-        else if ( tokenValue == "(" ) {
-          token.mType = LPAREN;
-        } // else if
-        else if ( tokenValue == ")" ) {
-          token.mType = RPAREN;
-        } // else if
-      } // else if IsSpecial
-      else {
-        // error: unrecognized token with first char
-      } // else
+      } // else if Is Special
 
       token.mValue = tokenValue;
     } // if
@@ -365,14 +358,81 @@ public:
       throw errorMsg;
     } // else
 
+    while ( Definition() || Statement() ) {
+
+    } // while
+
   } // UserInput()
 
   bool Definition() {
     Token token;
     mScanner.PeekToken( token );
+    if ( token.mValue == "void" ) {
+      mScanner.GetToken( token );
+      mScanner.PeekToken( token );
+      if ( token.mType == ID ) {
+        mScanner.GetToken( token );
+        if ( Function_Definition_Without_ID() ) {
+          return true;
+        } // if
+      } // if
+       
+      mScanner.GetToken( token );
+      string errorMsg = "";
+      errorMsg = errorMsg + "Unexpected token : '" + token.mValue + "'\n";
+      throw errorMsg;
+    } // if
+    else if ( Type_Specifier() ) {
+      mScanner.PeekToken( token );
+      if ( token.mType == ID ) {
+        mScanner.GetToken( token );
+        if ( Function_Definition_or_Declarators() ) {
+          return true;
+        } // if
+      } // if
+
+      mScanner.GetToken( token );
+      string errorMsg = "";
+      errorMsg = errorMsg + "Unexpected token : '" + token.mValue + "'\n";
+      throw errorMsg;
+    } // else if
 
     return false;
   } // Definition()
+
+  bool Type_Specifier() {
+    Token token;
+    mScanner.PeekToken( token );
+    if ( token.mType == INT || token.mType == FLOAT || token.mType == CHAR
+         || token.mType == STRING || token.mType == BOOL ) {
+      mScanner.GetToken( token );
+      return true;
+    } // if
+
+    return false;
+  } // Type_Specifier
+
+  bool Function_Definition_or_Declarators() {
+    if ( Function_Definition_Without_ID() || Rest_of_Declarators() ) {
+      return true;
+    } // if
+
+    return false;
+  } // Function_Definition_or_Declarators()
+
+  bool Rest_of_Declarators() {
+    Token token;
+    mScanner.PeekToken( token );
+    if ( token.mValue == "[" ) {
+      mScanner.GetToken( token );
+    } // if
+
+    return false;
+  } // Rest_of_Declarators()
+
+  bool Function_Definition_Without_ID() {
+    return false;
+  } // Function_Definition_Without_ID
 
   bool Statement() {
     return false;
@@ -381,8 +441,9 @@ public:
 }; // class Parser
 
 int main() {
-  int testNum = 0;
-  cin >> testNum;
+  char tmpChar = '\0';
+  cin.get( tmpChar );
+  cin.get( tmpChar );
 
   cout << "Our-C running ...\n";
   bool quit = false;
