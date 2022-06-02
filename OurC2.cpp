@@ -53,24 +53,20 @@ bool IsDigit( char ch ) {
   return false;
 } // IsDigit()
 
-bool IsSpecialSymbol( char ch ) {
-  if ( ch == ';' || ch == '=' || ch == '+'
-    || ch == '-' || ch == '*' || ch == '/'
-    || ch == '(' || ch == ')' || ch == ':'
-    || ch == '<' || ch == '>' ) {
-    return true;
-  } // if
-
-  return false;
-} // IsSpecialSymbol()
-
 enum TokenType {
   ID, CONSTANT, UNDEFINED_TYPE, 
   GE, LE, // >= <=
   EQ, NEQ, // == !=
-  AND, OR, // && ||
   INT, FLOAT, CHAR,
-  STRING, BOOL
+  STRING, BOOL, VOID,
+  IF, ELSE, WHILE,
+  DO, RETURN,
+  AND, OR, // && ||
+  PE, ME, // += -=
+  TE, DE, // *= /=
+  RE, // %=
+  PP, MM, // ++ --
+  RS, LS // >> <<
 };
 
 class Token {
@@ -222,18 +218,24 @@ public:
     // special symbol
     // >= <= <> :=
     char tmpChar = '\0';
-    if ( str[0] == ':' || str[0] == '>' ) {
+    if ( str[0] == '!' || str[0] == '*' 
+         || str[0] == '/' || str[0] == '%' ) {
       if ( PeekChar( tmpChar ) && tmpChar == '=' ) {
         GetChar( tmpChar );
         str += tmpChar;
       } // if
     } // if
-    else if ( str[0] == '<' ) {
-      if ( PeekChar( tmpChar ) ) {
-        if ( tmpChar == '=' || tmpChar == '>' ) {
-          GetChar( tmpChar );
-          str += tmpChar;
-        } // if
+    else if ( str[0] == '&' || str[0] == '|' ) {
+      if ( PeekChar( tmpChar ) && tmpChar == str[0] ) {
+        GetChar( tmpChar );
+        str += tmpChar;
+      } // if
+    } // else if
+    else if ( str[0] == '>' || str[0] == '<' || str[0] == '='
+              || str[0] == '+' || str[0] == '-' ) {
+      if ( PeekChar( tmpChar ) && ( tmpChar == str[0] || tmpChar == '=' ) ) {
+        GetChar( tmpChar );
+        str += tmpChar;
       } // if
     } // else if
   } // GetRestOfSpecial()
@@ -245,78 +247,157 @@ public:
       return true;
     } // if
 
-    char tmpChar = '\0';
+    char ch = '\0';
     string tokenValue = "";
     bool getTokenSuces = false;
 
-    if ( GetNonWhitespaceChar( tmpChar ) ) {
-      tokenValue += tmpChar;
+    if ( GetNonWhitespaceChar( ch ) ) {
+      tokenValue += ch;
       char tmpChar2 = '\0';
 
-      if ( IsLetter( tmpChar ) ) {
+      if ( IsLetter( ch ) ) {
         GetRestOfID( tokenValue );
-        if ( tokenValue == "true" || tokenValue == "false" ) {
-          token.mType = CONSTANT;
-        } // if
-        else if ( tokenValue == "int" ) {
-          token.mType = INT;
-        } // else if
-        else if ( tokenValue == "float" ) {
-          token.mType = FLOAT;
-        } // else if
-        else if ( tokenValue == "char" ) {
-          token.mType = CHAR;
-        } // else if
-        else if ( tokenValue == "string" ) {
-          token.mType = STRING;
-        } // else if
-        else if ( tokenValue == "bool" ) {
-          token.mType = BOOL;
-        } // else if
-        else {
-          token.mType = ID;
-        } // else
-
+        token.mType = ID;
         getTokenSuces = true;
       } // if
-      else if ( IsDigit( tmpChar )
-        || ( tmpChar == '.' && PeekChar( tmpChar2 )
+      else if ( IsDigit( ch )
+        || ( ch == '.' && PeekChar( tmpChar2 )
           && IsDigit( tmpChar2 ) ) ) {
         GetRestOfNum( tokenValue );
         token.mType = CONSTANT;
         getTokenSuces = true;
-      } // else if tmpChar == '.'
-      else if ( tmpChar == ':' && PeekChar( tmpChar2 ) && tmpChar2 != '=' ) {
-        // error: unrecognized token with first char
       } // else if
-      else if ( IsSpecialSymbol( tmpChar ) ) {
+      else if ( ch == '\'' ) {
+        GetChar( ch );
+        tokenValue += ch;
+        GetChar( ch );
+        tokenValue += ch;
+        token.mType = CONSTANT;
+        getTokenSuces = true;
+      } // else if
+      else if ( ch == '\"' ) {
+        while ( GetChar( ch ) && ch != '\"' ) {
+          tokenValue += ch;
+        } // while
+
+        tokenValue += ch;
+        token.mType = CONSTANT;
+        getTokenSuces = true;
+      } // else if
+      else if ( ch == '(' || ch == ')' 
+        || ch == '[' || ch == ']'
+        || ch == '{' || ch == '}'
+        || ch == '+' || ch == '-'
+        || ch == '*' || ch == '/'
+        || ch == '%' || ch == '^'
+        || ch == '>' || ch == '<'
+        || ch == '&' || ch == '|'
+        || ch == '=' || ch == '!'
+        || ch == ';' || ch == ':'
+        || ch == '?' || ch == ',' ) {
         GetRestOfSpecial( tokenValue );
         getTokenSuces = true;
-        if ( tokenValue == "=" ) {
-          token.mType = EQ;
-        } // else if
-        else if ( tokenValue == "<>" ) {
-          token.mType = NEQ;
-        } // else if
-        else if ( tokenValue == ">=" ) {
-          token.mType = GE;
-        } // else if
-        else if ( tokenValue == "<=" ) {
-          token.mType = LE;
-        } // else if
-      } // else if Is Special
+      } // else if
 
       token.mValue = tokenValue;
     } // if
+    
 
     if ( !getTokenSuces ) {
       string errorMsg = "";
-      errorMsg = errorMsg + "Unrecognized token with first char : \'" + tmpChar + "\'\n";
+      errorMsg = errorMsg + "Unrecognized token with first char : \'" + ch + "\'\n";
       throw errorMsg;
     } // if
+    else {
+      DetermineTokenType( token );
+    } // else
 
     return getTokenSuces;
   } // GetToken()
+
+  void DetermineTokenType( Token& token ) {
+    if ( token.mValue == "true" || token.mValue == "false" ) {
+      token.mType = CONSTANT;
+    } // if
+    else if ( token.mValue == "int" ) {
+      token.mType = INT;
+    } // else if
+    else if ( token.mValue == "float" ) {
+      token.mType = FLOAT;
+    } // else if
+    else if ( token.mValue == "char" ) {
+      token.mType = CHAR;
+    } // else if
+    else if ( token.mValue == "string" ) {
+      token.mType = STRING;
+    } // else if
+    else if ( token.mValue == "bool" ) {
+      token.mType = BOOL;
+    } // else if
+    else if ( token.mValue == "void" ) {
+      token.mType = VOID;
+    } // else if
+    else if ( token.mValue == "if" ) {
+      token.mType = IF;
+    } // else if
+    else if ( token.mValue == "else" ) {
+      token.mType = ELSE;
+    } // else if
+    else if ( token.mValue == "while" ) {
+      token.mType = WHILE;
+    } // else if
+    else if ( token.mValue == "do" ) {
+      token.mType = DO;
+    } // else if
+    else if ( token.mValue == "return" ) {
+      token.mType = RETURN;
+    } // else if
+    else if ( token.mValue == "==" ) {
+      token.mType = EQ;
+    } // else if
+    else if ( token.mValue == "!=" ) {
+      token.mType = NEQ;
+    } // else if
+    else if ( token.mValue == ">=" ) {
+      token.mType = GE;
+    } // else if
+    else if ( token.mValue == "<=" ) {
+      token.mType = LE;
+    } // else if
+    else if ( token.mValue == "&&" ) {
+      token.mType = AND;
+    } // else if
+    else if ( token.mValue == "||" ) {
+      token.mType = OR;
+    } // else if
+    else if ( token.mValue == "+=" ) {
+      token.mType = PE;
+    } // else if
+    else if ( token.mValue == "-=" ) {
+      token.mType = ME;
+    } // else if
+    else if ( token.mValue == "*=" ) {
+      token.mType = TE;
+    } // else if
+    else if ( token.mValue == "/=" ) {
+      token.mType = DE;
+    } // else if
+    else if ( token.mValue == "%=" ) {
+      token.mType = RE;
+    } // else if
+    else if ( token.mValue == "++" ) {
+      token.mType = PP;
+    } // else if
+    else if ( token.mValue == "--" ) {
+      token.mType = MM;
+    } // else if
+    else if ( token.mValue == ">>" ) {
+      token.mType = RS;
+    } // else if
+    else if ( token.mValue == "<<" ) {
+      token.mType = LS;
+    } // else if
+  } // DetermineTokenType()
 
   bool PeekToken( Token& token ) {
     bool peakSuces = false;
@@ -367,7 +448,7 @@ public:
   bool Definition() {
     Token token;
     mScanner.PeekToken( token );
-    if ( token.mValue == "void" ) {
+    if ( token.mType == VOID ) {
       mScanner.GetToken( token );
       mScanner.PeekToken( token );
       if ( token.mType == ID ) {
@@ -441,9 +522,10 @@ public:
 }; // class Parser
 
 int main() {
-  char tmpChar = '\0';
-  cin.get( tmpChar );
-  cin.get( tmpChar );
+  int testNum = 0;
+  char ch = '\0';
+  cin >> testNum ;
+  cin.get( ch );
 
   cout << "Our-C running ...\n";
   bool quit = false;
