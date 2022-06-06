@@ -53,6 +53,13 @@ bool IsDigit( char ch ) {
   return false;
 } // IsDigit()
 
+void ReadLine(){
+  char ch = '\0';
+  while( cin.get( ch ) && ch != '\n' ){
+    
+  } // while
+} // ReadLine()
+
 enum TokenType {
   ID, CONSTANT, UNDEFINED_TYPE, 
   GE, LE, // >= <=
@@ -216,7 +223,6 @@ public:
 
   void GetRestOfSpecial( string& str ) {
     // special symbol
-    // >= <= <> :=
     char tmpChar = '\0';
     if ( str[0] == '!' || str[0] == '*' 
          || str[0] == '/' || str[0] == '%' ) {
@@ -296,6 +302,7 @@ public:
         || ch == ';' || ch == ':'
         || ch == '?' || ch == ',' ) {
         GetRestOfSpecial( tokenValue );
+        token.mType = UNDEFINED_TYPE;
         getTokenSuces = true;
       } // else if
 
@@ -426,6 +433,7 @@ public:
   
   void User_Input() {
     Token token;
+    cout << "> ";
     if ( Definition() ) {
       
     } // if
@@ -439,8 +447,9 @@ public:
       throw errorMsg;
     } // else
 
+    cout << "> ";
     while ( Definition() || Statement() ) {
-
+    cout << "> ";
     } // while
   } // UserInput()
 
@@ -630,23 +639,70 @@ public:
     Token token;
 
     mScanner.PeekToken( token );
-    if ( token.mValue == "[" ) {
+    if( token.mValue == "(" ){
       mScanner.GetToken( token );
-      if ( Expression() ){
-        mScanner.PeekToken( token );
-        if ( token.mValue == "]" ) {
-
+      Actual_parameter_list();
+      mScanner.PeekToken( token );
+      if( token.mValue == ")" ){
+        mScanner.GetToken( token );
+        if( Rest_of_maybe_conditional_exp_and_rest_of_maybe_logical_OR_exp() ){
+          return true;
         } // if
-      } // if 
-    } // if
-
-    if ( Assignment_Operator() ) {
-      if( Basic_Expression() ){
-        return true;
       } // if
-    } // if
+    } // else if
+    else{
+      mScanner.PeekToken( token );
+      if ( token.mValue == "[" ) {
+        mScanner.GetToken( token );
+        if ( Expression() ){
+          mScanner.PeekToken( token );
+          if ( token.mValue == "]" ) {
+            mScanner.GetToken( token );
+          } // if
+        } // if 
+      } // if
+
+      if ( Assignment_Operator() ) {
+        if( Basic_Expression() ){
+          return true;
+        } // if
+      } // if
+      else{
+        mScanner.PeekToken( token );
+        if( token.mType == PP || token.mType == MM ){
+          mScanner.GetToken( token );
+        } // if
+
+        if( Rest_of_maybe_conditional_exp_and_rest_of_maybe_logical_OR_exp() ){
+          return true;
+        } // if
+      } // else
+    } // else
+
     return false;
   } // Rest_of_Identifier_started_basic_exp()
+
+  bool Actual_parameter_list(){
+    if( !Basic_Expression() ){
+      return false;
+    } // if
+
+    Token token;
+    mScanner.PeekToken( token );
+    while( token.mValue == "," ){
+      mScanner.GetToken( token );
+      if( !Basic_Expression() ){
+        // throw error
+        mScanner.GetToken( token );
+        string errorMsg = "";
+        errorMsg = errorMsg + "Unexpected token : '" + token.mValue + "'\n";
+        throw errorMsg;
+      } // if
+      mScanner.PeekToken( token );
+    } // while
+
+    return true;
+  } // Actual_parameter_list()
 
   bool Assignment_Operator() {
     Token token;
@@ -725,12 +781,34 @@ public:
   } // Rest_of_maybe_relational_exp()
 
   bool Rest_of_maybe_shift_exp(){
-    if( Rest_of_maybe_additive_exp() ){
-      return true;
+    if( !Rest_of_maybe_additive_exp() ){
+      return false;
     } // if
 
-    return false;
+    Token token;
+    mScanner.PeekToken( token );
+    while( token.mType == LS || token.mType == RS ){
+      mScanner.GetToken( token );
+      if( !Maybe_additive_exp() ){
+        mScanner.GetToken( token );
+        string errorMsg = "";
+        errorMsg = errorMsg + "Unexpected token : '" + token.mValue + "'\n";
+        throw errorMsg;
+      } // if
+
+      mScanner.PeekToken( token );
+    } // while
+
+    return true;
   } // Rest_of_maybe_shift_exp()
+
+  bool Maybe_additive_exp(){
+    if( !Maybe_mult_exp() ){
+      return false;
+    } // if
+
+    return true;
+  } // Maybe_additive_exp()
 
   bool Rest_of_maybe_additive_exp(){
     if( Rest_of_maybe_mult_exp() ){
@@ -740,23 +818,62 @@ public:
     return false;
   } // Rest_of_maybe_additive_exp()
 
+  bool Maybe_mult_exp(){
+    if( Unary_exp() && Rest_of_maybe_mult_exp() ){
+      return true;
+    } // if
+
+    return false;
+  } // Maybe_mult_exp()
+
   bool Rest_of_maybe_mult_exp(){
     return true;
   } // Rest_of_maybe_mult_exp()
+
+  bool Unary_exp(){
+    if( Unsigned_unary_exp() ){
+      return true;
+    } // if
+
+    return false;
+  } // Unary_exp()
+
+  bool Unsigned_unary_exp(){
+    Token token;
+    mScanner.PeekToken( token );
+    if( token.mType == ID ){
+      mScanner.GetToken( token );
+      return true;
+    } // if
+    else if( token.mType == CONSTANT ){
+      mScanner.GetToken( token );
+      return true;
+    } // else if
+    else if( token.mValue == "(" ){
+      mScanner.GetToken( token );
+      if( Expression() ){
+        mScanner.PeekToken( token );
+        if( token.mValue == ")" ){
+          mScanner.GetToken( token );
+          return true;
+        } // if
+      } // if 
+    } // else if
+
+    return false;
+  } // Unsigned_unary_exp()
 
 }; // class Parser
 
 int main() {
   int testNum = 0;
-  char ch = '\0';
   cin >> testNum ;
-  cin.get( ch );
+  ReadLine();
 
   cout << "Our-C running ...\n";
   bool quit = false;
   Parser parser;
   while ( !quit ) {
-    cout << "> ";
     try {
       parser.User_Input();
     }
