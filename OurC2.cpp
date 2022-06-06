@@ -442,7 +442,6 @@ public:
     while ( Definition() || Statement() ) {
 
     } // while
-
   } // UserInput()
 
   bool Definition() {
@@ -506,6 +505,41 @@ public:
     mScanner.PeekToken( token );
     if ( token.mValue == "[" ) {
       mScanner.GetToken( token );
+      mScanner.PeekToken( token );
+      if ( token.mType == CONSTANT ) {
+        mScanner.GetToken( token );
+        mScanner.PeekToken( token );
+        if ( token.mValue == "]" ) {
+          mScanner.GetToken( token );
+        } // if
+        else {
+          mScanner.GetToken( token );
+          string errorMsg = "";
+          errorMsg = errorMsg + "Unexpected token : '" + token.mValue + "'\n";
+          throw errorMsg;
+        } // else
+      } // if
+      else {
+        mScanner.GetToken( token );
+        string errorMsg = "";
+        errorMsg = errorMsg + "Unexpected token : '" + token.mValue + "'\n";
+        throw errorMsg;
+      } // else
+    } // if
+
+    mScanner.PeekToken( token );
+    while ( token.mValue == "," ) {
+      mScanner.GetToken( token );
+      mScanner.PeekToken( token );
+      if ( token.mType == ID ) {
+        mScanner.GetToken( token );
+      } // if
+    } // while
+
+    mScanner.PeekToken( token );
+    if ( token.mValue == ";" ) {
+      mScanner.GetToken( token );
+      return true;
     } // if
 
     return false;
