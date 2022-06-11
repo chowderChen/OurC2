@@ -104,6 +104,7 @@ public:
 
 class TokenScanner {
   bool mIsNewLine;
+  bool findFirstValidCh;
 
   bool GetChar( char& ch ) {
     if ( mNextChar != '\0' ) {
@@ -118,6 +119,10 @@ class TokenScanner {
     } // else
 
     // get char success
+    if ( !findFirstValidCh ) {
+      return true;
+    } // if
+
     if ( mIsNewLine ) {
       mLine++;
       mColumn = 0;
@@ -148,6 +153,7 @@ class TokenScanner {
       getCharSuccess = GetChar( ch );
     } // while
 
+    findFirstValidCh = true;
     if ( getCharSuccess && ch == '/' ) {
       // reminder: divide symbol "/" will into this section
       char tmpChar = '\0';
@@ -320,6 +326,7 @@ public:
     mIsNewLine = true;
     mNextChar = '\0';
     mNextToken.Init();
+    findFirstValidCh = false;
   } // Init()
 
   bool ReadLine() {
@@ -432,22 +439,36 @@ public:
   
   void User_Input() {
     Token token;
+    mTokenString.clear();
+    mScanner.Init();
     cout << "> ";
-    if ( Definition() || Statement() ) {
-      
+    if ( Definition() ) {
+
+    } // if
+    else if ( Statement() ) {
+      cout << "Statement executed ...\n";
     } // if
     else {
       mScanner.GetToken( token );
       string errorMsg = "";
-      errorMsg = errorMsg + "Unexpected token : '" + token.mValue + "'\n";
+      errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
       throw errorMsg;
     } // else
 
-    mTokenString.clear();
-    cout << "> ";
-    while ( Definition() || Statement() ) {
+    bool keepRun = true;
+    while ( keepRun ) {
       mTokenString.clear();
+      mScanner.Init();
       cout << "> ";
+      if ( Definition() ) {
+
+      } // if
+      else if ( Statement() ) {
+        cout << "Statement executed ...\n";
+      } // if
+      else {
+        keepRun = false;
+      } // else
     } // while
   } // User_Input()
 
@@ -465,35 +486,51 @@ public:
         mScanner.GetToken( token );
         idToken = token;
         if ( Function_Definition_Without_ID() ) {
-          cout << "Definition of " << idToken.mValue << " entered ...\n";
+          if ( gIdTable.find( idToken.mValue ) == gIdTable.end() ) {
+            cout << "Definition of ";
+          } // if
+          else {
+            cout << "New definition of ";
+          } // else
+
+          cout << idToken.mValue << " entered ...\n";
+          gIdTable[idToken.mValue] = 1;
           return true;
         } // if
       } // if
        
       mScanner.GetToken( token );
-      errorMsg = errorMsg + "Unexpected token : '" + token.mValue + "'\n";
+      errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
       throw errorMsg;
     } // if
-    else if ( Type_Specifier() ) {
+    else if ( Type_specifier() ) {
       mScanner.PeekToken( token );
       if ( token.mType == ID ) {
         mScanner.GetToken( token );
         idToken = token;
         if ( Function_Definition_or_Declarators() ) {
-          cout << "Definition of " << idToken.mValue << " entered ...\n";
+          if ( gIdTable.find( idToken.mValue ) == gIdTable.end() ) {
+            cout << "Definition of ";
+          } // if
+          else {
+            cout << "New definition of ";
+          } // else
+
+          cout << idToken.mValue << " entered ...\n";
+          gIdTable[idToken.mValue] = 1;
           return true;
         } // if
       } // if
 
       mScanner.GetToken( token );
-      errorMsg = errorMsg + "Unexpected token : '" + token.mValue + "'\n";
+      errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
       throw errorMsg;
     } // else if
 
     return false;
   } // Definition()
 
-  bool Type_Specifier() {
+  bool Type_specifier() {
     Token token;
     mScanner.PeekToken( token );
     if ( token.mType == INT || token.mType == FLOAT || token.mType == CHAR
@@ -503,7 +540,7 @@ public:
     } // if
 
     return false;
-  } // Type_Specifier()
+  } // Type_specifier()
 
   bool Function_Definition_or_Declarators() {
     if ( Function_Definition_Without_ID() || Rest_of_Declarators() ) {
@@ -515,6 +552,10 @@ public:
 
   bool Rest_of_Declarators() {
     Token token;
+    bool error = false;
+    string errorMsg = "";
+
+    // [ '[' Constant ']' ]
     mScanner.PeekToken( token );
     if ( token.mValue == "[" ) {
       mScanner.GetToken( token );
@@ -526,26 +567,56 @@ public:
           mScanner.GetToken( token );
         } // if
         else {
-          mScanner.GetToken( token );
-          string errorMsg = "";
-          errorMsg = errorMsg + "Unexpected token : '" + token.mValue + "'\n";
-          throw errorMsg;
+          error = true;
         } // else
       } // if
       else {
-        mScanner.GetToken( token );
-        string errorMsg = "";
-        errorMsg = errorMsg + "Unexpected token : '" + token.mValue + "'\n";
-        throw errorMsg;
+        error = true;
       } // else
     } // if
 
+    if ( error ) {
+      mScanner.GetToken( token );
+      errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
+      throw errorMsg;
+    } // if
+
+    // { ',' Identifier [ '[' Constant ']' ] }
     mScanner.PeekToken( token );
     while ( token.mValue == "," ) {
       mScanner.GetToken( token );
       mScanner.PeekToken( token );
-      if ( token.mType == ID ) {
+      if ( token.mType != ID ) {
         mScanner.GetToken( token );
+        errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
+        throw errorMsg;
+      } // if
+
+      mScanner.GetToken( token );
+
+      // [ '[' Constant ']' ]
+      mScanner.PeekToken( token );
+      if ( token.mValue == "[" ) {
+        mScanner.GetToken( token );
+        mScanner.PeekToken( token );
+        if ( token.mType == CONSTANT ) {
+          mScanner.GetToken( token );
+          if ( token.mValue == "]" ) {
+            mScanner.GetToken( token );
+          } // if
+          else {
+            error = true;
+          } // else
+        } // if
+        else {
+          error = true;
+        } // else
+      } // if
+
+      if ( error ) {
+        mScanner.GetToken( token );
+        errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
+        throw errorMsg;
       } // if
     } // while
 
@@ -559,18 +630,173 @@ public:
   } // Rest_of_Declarators()
 
   bool Function_Definition_Without_ID() {
+    // '(' [ VOID | formal_parameter_list ] ')' compound_statement
+    Token token;
+    string errorMsg = "";
+    mScanner.PeekToken( token );
+    if ( token.mValue == "(" ) {
+      mScanner.GetToken( token );
+      mScanner.PeekToken( token );
+      if ( token.mType == VOID ) {
+        mScanner.GetToken( token );
+      } // if
+      else if ( Formal_parameter_list() ) {
+
+      } // if
+      else {
+        mScanner.GetToken( token );
+        errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
+        throw errorMsg;
+      } // eles
+
+      mScanner.GetToken( token );
+      if ( token.mValue != ")" ) {
+        errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
+        throw errorMsg;
+      } // if
+
+      if ( !Compound_statement() ) {
+        mScanner.GetToken( token );
+        errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
+        throw errorMsg;
+      } // if
+
+      return true;
+    } // if ( token.mValue == "(" )
+
     return false;
   } // Function_Definition_Without_ID()
+
+  bool Formal_parameter_list() {
+    Token token;
+    string errorMsg = "";
+    bool matchFirstToken = false, success = false;
+    if ( Type_specifier() ) {
+      mScanner.PeekToken( token );
+      if ( token.mValue == "&" ) {
+        mScanner.GetToken( token );
+      } // if
+
+      mScanner.GetToken( token );
+      if ( token.mType != ID ) {
+        errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
+        throw errorMsg;
+      } // if
+
+      mScanner.PeekToken( token );
+      if ( token.mValue == "[") {
+        mScanner.GetToken( token );
+        mScanner.GetToken( token );
+        if ( token.mType != CONSTANT ) {
+          errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
+          throw errorMsg;
+        } // if
+
+        mScanner.GetToken( token );
+        if ( token.mValue != "]" ) {
+          errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
+          throw errorMsg;
+        } // if
+      } // if
+
+      mScanner.PeekToken( token );
+      while ( token.mValue == "," ) {
+        mScanner.GetToken( token );
+        if ( !Type_specifier() ) {
+          errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
+          throw errorMsg;
+        } // if
+
+        mScanner.PeekToken( token );
+        if ( token.mValue == "&" ) {
+          mScanner.GetToken( token );
+        } // if
+
+        mScanner.GetToken( token );
+        if ( token.mType != ID ) {
+          errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
+          throw errorMsg;
+        } // if ( token.mType != ID ) 
+
+        mScanner.PeekToken( token );
+        if ( token.mValue == "[") {
+          mScanner.GetToken( token );
+          mScanner.GetToken( token );
+          if ( token.mType != CONSTANT ) {
+            errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
+            throw errorMsg;
+          } // if
+
+          mScanner.GetToken( token );
+          if ( token.mValue != "]" ) {
+            errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
+            throw errorMsg;
+          } // if
+        } // if
+
+        mScanner.PeekToken( token );
+      } // while
+
+      return true;
+    } // if
+
+    return false;
+  } // Formal_parameter_list()
+
+  bool Compound_statement() {
+    // '{' { declaration | statement } '}'
+    Token token;
+    mScanner.PeekToken( token );
+    if ( token.mValue == "{" ) {
+      mScanner.GetToken( token );
+      while ( Declaration() || Statement() ) {
+
+      } // while
+
+      mScanner.PeekToken( token );
+      if ( token.mValue == "}" ) {
+        mScanner.GetToken( token );
+        return true;
+      } // if
+    } // if
+
+    return false;
+  } // Compound_statement()
+
+  bool Declaration() {
+    Token token;
+    string errorMsg = "";
+    // type_specifier Identifier rest_of_declarators
+    if ( Type_specifier() ) {
+      mScanner.PeekToken( token );
+      if ( token.mType == ID ) {
+        mScanner.GetToken( token );
+        if ( Rest_of_Declarators() ) {
+          return true;
+        } // if
+      } // if
+
+      mScanner.GetToken( token );
+      errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
+      throw errorMsg;
+    } // if
+
+    return false;
+  } // Declaration()
 
   bool Statement() {
     Token token;
     bool success = false;
+    bool firstTokenMatch = false;
+
     mScanner.PeekToken( token );
     if ( token.mValue == ";" ) {
       mScanner.GetToken( token );
+      firstTokenMatch = true;
       success = true;
     } // if
     else if ( Expression() ) {
+      firstTokenMatch = true;
       mScanner.PeekToken( token );
       if ( token.mValue == ";" ) {
         mScanner.GetToken( token );
@@ -578,6 +804,93 @@ public:
         success = true;
       } // if
     } // else if
+    else if ( token.mType == RETURN ) {
+      // RETURN [ expression ] ';'
+      mScanner.GetToken( token );
+      firstTokenMatch = true;
+      Expression();
+      mScanner.PeekToken( token );
+      if ( token.mValue == ";" ) {
+        mScanner.GetToken( token );
+        mTokenString.push_back( token );
+        success = true;
+      } // if
+    } // if
+    else if ( Compound_statement() ) {
+      firstTokenMatch = true;
+      success = true;
+    } // if
+    else if ( token.mType == IF ) {
+      // IF '(' expression ')' statement [ ELSE statement ]
+      mScanner.GetToken( token );
+      firstTokenMatch = true;
+      mScanner.PeekToken( token );
+      if ( token.mValue == "(" ) {
+        mScanner.GetToken( token );
+        if ( Expression() ) {
+          mScanner.PeekToken( token );
+          if ( token.mValue == ")" ) {
+            mScanner.GetToken( token );
+            if ( Statement() ) {
+              mScanner.PeekToken( token );
+              if ( token.mType == ELSE ) {
+                mScanner.GetToken( token );
+                if ( Statement() ) {
+                  success = true;
+                } // if
+              } // if
+              else {
+                success = true;
+              } // else
+            } // if
+          } // if
+        } // if
+      } // if
+    } // if
+    else if ( token.mType == WHILE ) {
+      // WHILE '(' expression ')' statement
+      firstTokenMatch = true;
+      mScanner.GetToken( token );
+      mScanner.PeekToken( token );
+      if ( token.mValue == "(" ) {
+        mScanner.GetToken( token );
+        if ( Expression() ) {
+          mScanner.PeekToken( token );
+          if ( token.mValue == ")" ) {
+            mScanner.GetToken( token );
+            if ( Statement() ) {
+              success = true;
+            } // if
+          } // if
+        } // if
+      } // if
+    } // if
+    else if ( token.mType == DO ) {
+      // DO statement WHILE '(' expression ')' ';'
+      firstTokenMatch = true;
+      mScanner.GetToken( token );
+      if ( Statement() ) {
+        mScanner.PeekToken( token );
+        if ( token.mType == WHILE ) {
+          mScanner.GetToken( token );
+          mScanner.PeekToken( token );
+          if ( token.mValue == "(" ) {
+            mScanner.GetToken( token );
+            if ( Expression() ) {
+              mScanner.PeekToken( token );
+              if ( token.mValue == ")" ) {
+                mScanner.GetToken( token );
+                mScanner.PeekToken( token );
+                if ( token.mValue == ";" ) {
+                  mScanner.GetToken( token );
+                  success = true;
+                } // if
+              } // if
+            } // if
+          } // if
+        } // if
+      } // if
+    } // if
 
     if ( mTokenString.size() == 4 && mTokenString[0].mValue == "Done"
          && mTokenString[1].mValue == "(" && mTokenString[2].mValue == ")"
@@ -585,9 +898,12 @@ public:
       string errorMsg = "quit";
       throw errorMsg;
     } // if
-    else if ( success ) {
-      cout << "Statement executed ...\n";
-    } // if
+    else if ( firstTokenMatch && !success ) {
+      mScanner.GetToken( token );
+      string errorMsg = "";
+      errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
+      throw errorMsg;
+    } // else if
 
     return success;
   } // Statement()
@@ -604,7 +920,7 @@ public:
       if ( !Basic_Expression() ) {
         mScanner.GetToken( token );
         string errorMsg = "";
-        errorMsg = errorMsg + "Unexpected token : '" + token.mValue + "'\n";
+        errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
         throw errorMsg;
       } // if
     } // while
@@ -613,12 +929,19 @@ public:
   } // Expression()
 
   bool Basic_Expression() {
-    Token token;
+    Token token, idToken;
+    string errorMsg = "";
     mScanner.PeekToken( token );
     if ( token.mType == ID ) {
       mScanner.GetToken( token );
+      idToken = token;
       mTokenString.push_back( token );
       if ( Rest_of_Identifier_started_basic_exp() ) {
+        if ( gIdTable.find( idToken.mValue ) == gIdTable.end() ) {
+          errorMsg = errorMsg + "undefined identifier : \'" + idToken.mValue + "\'\n";
+          throw errorMsg;
+        } // if
+
         return true;
       } // if
     } // if
@@ -639,6 +962,32 @@ public:
         return true;
       } // if
     } // else if
+    else if ( Sign() ) {
+      while ( Sign() ) {
+
+      } // while
+
+      if ( !Signed_unary_exp() || !Rest_of_maybe_conditional_exp_and_rest_of_maybe_logical_OR_exp() ) {
+        errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
+        throw errorMsg;
+      } // if
+
+      return true;
+    } // if
+    else if ( token.mType == PP || token.mType == MM ) {
+      mScanner.GetToken( token );
+      mScanner.PeekToken( token );
+      if ( token.mType == ID ) {
+        mScanner.GetToken( token );
+        if ( Rest_of_PPMM_Identifier_started_basic_exp() ) {
+          return true;
+        } // if
+      } // if
+      
+      mScanner.GetToken( token );
+      errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
+      throw errorMsg;
+    } // if
 
     return false;
   } // Basic_Expression()
@@ -692,6 +1041,41 @@ public:
     return false;
   } // Rest_of_Identifier_started_basic_exp()
 
+  bool Rest_of_PPMM_Identifier_started_basic_exp() {
+    // [ '[' expression ']' ] romce_and_romloe
+    Token token;
+    string errorMsg;
+    mScanner.PeekToken( token );
+    if ( token.mValue == "[") {
+      mScanner.GetToken( token );
+      if ( !Expression() ) {
+        mScanner.GetToken( token );
+        errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
+        throw errorMsg;
+      } // if
+
+      mScanner.GetToken( token );
+      if ( token.mValue != "]" ) {
+        errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
+        throw errorMsg;
+      } // if
+
+      if ( !Rest_of_maybe_conditional_exp_and_rest_of_maybe_logical_OR_exp() ) {
+        mScanner.GetToken( token );
+        errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
+        throw errorMsg;
+      } // if
+
+      return true;
+    } // if
+
+    if ( Rest_of_maybe_conditional_exp_and_rest_of_maybe_logical_OR_exp() ) {
+      return true;
+    } // if
+
+    return false;
+  } // Rest_of_PPMM_Identifier_started_basic_exp()
+
   bool Sign() {
     Token token;
     mScanner.PeekToken( token );
@@ -717,7 +1101,7 @@ public:
         // throw error
         mScanner.GetToken( token );
         string errorMsg = "";
-        errorMsg = errorMsg + "Unexpected token : '" + token.mValue + "'\n";
+        errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
         throw errorMsg;
       } // if
 
@@ -815,7 +1199,7 @@ public:
       if ( !Maybe_additive_exp() ) {
         mScanner.GetToken( token );
         string errorMsg = "";
-        errorMsg = errorMsg + "Unexpected token : '" + token.mValue + "'\n";
+        errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
         throw errorMsg;
       } // if
 
@@ -845,7 +1229,7 @@ public:
       if ( !Maybe_mult_exp() ) {
         mScanner.GetToken( token );
         string errorMsg = "";
-        errorMsg = errorMsg + "Unexpected token : '" + token.mValue + "'\n";
+        errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
         throw errorMsg;
       } // if
 
@@ -864,7 +1248,7 @@ public:
       Token token;
       mScanner.GetToken( token );
       string errorMsg = "";
-      errorMsg = errorMsg + "Unexpected token : '" + token.mValue + "'\n";
+      errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
       throw errorMsg;
     } // if
 
@@ -875,12 +1259,12 @@ public:
     Token token;
     mScanner.PeekToken( token );
     while ( token.mValue == "*" || token.mValue == "/"
-           || token.mValue == "%" ) {
+            || token.mValue == "%" ) {
       mScanner.GetToken( token );
       if ( !Unary_exp() ) {
         mScanner.GetToken( token );
         string errorMsg = "";
-        errorMsg = errorMsg + "Unexpected token : '" + token.mValue + "'\n";
+        errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
         throw errorMsg;
       } // if
 
@@ -891,14 +1275,15 @@ public:
   } // Rest_of_maybe_mult_exp()
 
   bool Unary_exp() {
-    Token token;
+    Token token, idToken;
+    string errorMsg = "";
     bool error = false;
     mScanner.PeekToken( token );
     if ( Unsigned_unary_exp() ) {
       return true;
     } // if
     else if ( Sign() ) {
-      while ( Sign() ){
+      while ( Sign() ) {
 
       } // while
 
@@ -914,8 +1299,14 @@ public:
       mScanner.PeekToken( token );
       if ( token.mType == ID ) {
         mScanner.GetToken( token );
+        idToken = token;
         if ( token.mValue == "[" ) {
           mScanner.GetToken( token );
+          if ( gIdTable.find( idToken.mValue ) == gIdTable.end() ) {
+            errorMsg = errorMsg + "undefined identifier : \'" + idToken.mValue + "\'\n";
+            throw errorMsg;
+          } // if
+
           if ( Expression() ) {
             mScanner.PeekToken( token );
             if ( token.mValue == "]" ) {
@@ -932,12 +1323,11 @@ public:
       } // if
 
       error = true;
-    } // else
+    } // if
 
     if ( error ) {
       mScanner.GetToken( token );
-      string errorMsg = "";
-      errorMsg = errorMsg + "Unexpected token : '" + token.mValue + "'\n";
+      errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
       throw errorMsg;
     } // if
     
@@ -945,8 +1335,10 @@ public:
   } // Unary_exp()
 
   bool Signed_unary_exp() {
-    Token token;
+    Token token, idToken;
+    string errorMsg = "";
     bool error = false;
+    bool success = false;
     mScanner.PeekToken( token );
     if ( token.mType == CONSTANT ) {
       mScanner.GetToken( token );
@@ -966,6 +1358,7 @@ public:
     } // else if
     else if ( token.mType == ID ) {
       mScanner.GetToken( token );
+      idToken = token;
       mScanner.PeekToken( token );
       if ( token.mValue == "(" ) {
         mScanner.GetToken( token );
@@ -973,30 +1366,37 @@ public:
         mScanner.PeekToken( token );
         if ( token.mValue == ")" ) {
           mScanner.GetToken( token );
-          return true;
+          success = true;
         } // if
       } // if
-      else if ( token.mValue == "[") {
+      else if ( token.mValue == "[" ) {
         mScanner.GetToken( token );
         if ( Expression() ) {
           mScanner.PeekToken( token );
           if ( token.mValue == "]" ) {
             mScanner.GetToken( token );
-            return true;
+            success = true;
           } // if
         } // if
       } // if
       else {
-        return true;
+        success = true;
       } // else
+
+      if ( success ) {
+        if ( gIdTable.find( idToken.mValue ) == gIdTable.end() ) {
+          errorMsg = errorMsg + "undefined identifier : \'" + idToken.mValue + "\'\n";
+          throw errorMsg;
+        } // if
+        return true;
+      } // if
 
       error = true;
     } // else if
 
     if ( error ) {
       mScanner.GetToken( token );
-      string errorMsg = "";
-      errorMsg = errorMsg + "Unexpected token : '" + token.mValue + "'\n";
+      errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
       throw errorMsg;
     } // if
 
@@ -1005,9 +1405,14 @@ public:
 
   bool Unsigned_unary_exp() {
     Token token;
+    string errorMsg = "";
     mScanner.PeekToken( token );
     if ( token.mType == ID ) {
       mScanner.GetToken( token );
+      if ( gIdTable.find( token.mValue ) == gIdTable.end() ) {
+        errorMsg = errorMsg + "undefined identifier : \'" + token.mValue + "\'\n";
+        throw errorMsg;
+      } // if
       return true;
     } // if
     else if ( token.mType == CONSTANT ) {
@@ -1030,6 +1435,12 @@ public:
   
 }; // class Parser
 
+void LoadPreDefID() {
+  gIdTable["Done"] = 1;
+  gIdTable["cin"] = 1;
+  gIdTable["cout"] = 1;
+} // LoadPreDefID()
+
 int main() {
   int testNum = 0;
   cin >> testNum ;
@@ -1038,6 +1449,7 @@ int main() {
   cout << "Our-C running ...\n";
   bool quit = false;
   Parser parser;
+  LoadPreDefID();
   while ( !quit ) {
     try {
       parser.User_Input();
@@ -1049,8 +1461,6 @@ int main() {
       else {
         cout << "Line " << parser.mScanner.mLine << " : " << errorMsg;
         parser.mScanner.ReadLine();
-        parser.mScanner.Init();
-        parser.mTokenString.clear();
       } // else
     } // catch
   } // while
