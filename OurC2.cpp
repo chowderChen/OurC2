@@ -6,10 +6,9 @@
 # include <cstdlib>
 # include <iomanip>
 # include <exception>
+# include <stack>
 
 using namespace std;
-
-map<string, int> gIdTable;
 
 bool IsInt( float num ) {
   return floor( num ) == num;
@@ -104,7 +103,7 @@ public:
 
 class TokenScanner {
   bool mIsNewLine;
-  bool findFirstValidCh;
+  bool mFirstValidChFound;
 
   bool GetChar( char& ch ) {
     if ( mNextChar != '\0' ) {
@@ -119,8 +118,13 @@ class TokenScanner {
     } // else
 
     // get char success
-    if ( !findFirstValidCh ) {
-      return true;
+    if ( !mFirstValidChFound ) {
+      if ( IsWhitespace( ch ) ) {
+        return true;
+      } // if
+      else {
+        mFirstValidChFound = true;
+      } // else
     } // if
 
     if ( mIsNewLine ) {
@@ -153,7 +157,6 @@ class TokenScanner {
       getCharSuccess = GetChar( ch );
     } // while
 
-    findFirstValidCh = true;
     if ( getCharSuccess && ch == '/' ) {
       // reminder: divide symbol "/" will into this section
       char tmpChar = '\0';
@@ -326,7 +329,7 @@ public:
     mIsNewLine = true;
     mNextChar = '\0';
     mNextToken.Init();
-    findFirstValidCh = false;
+    mFirstValidChFound = false;
   } // Init()
 
   bool ReadLine() {
@@ -432,6 +435,55 @@ public:
 
 }; // TokenScanner
 
+class CallStack {
+public:
+  stack< map<string, int> > mCallStack;
+  
+  CallStack() {
+    NewRecord();
+  } // CallStack()
+
+  bool IsDefined( string token ) {
+    if ( !mCallStack.empty() ) {
+      map<string, int> m = mCallStack.top() ;
+      mCallStack.pop();
+      bool success = false;
+      if ( m.find( token ) == m.end() ) {
+        success = IsDefined( token );
+      } // if
+      else {
+        success = true;
+      } // else
+
+      mCallStack.push( m );
+      return success;
+    } // if
+    
+    return false;
+  } // IsDefined()
+
+  void NewID( string token, int value ) {
+    map<string, int> m = mCallStack.top();
+    mCallStack.pop();
+    m[token] = value;
+    mCallStack.push( m );
+  } // NewID()
+
+  void NewRecord() {
+    map<string, int> m;
+    mCallStack.push( m );
+  } // NewRecord()
+
+  void PopRecord() {
+    if ( !mCallStack.empty() ) {
+      mCallStack.pop();
+    } // if
+  } // PopRecord()
+
+}; // CallStack
+
+CallStack gCallStack;
+
 class Parser {
 public:
   TokenScanner mScanner;
@@ -486,15 +538,15 @@ public:
         mScanner.GetToken( token );
         idToken = token;
         if ( Function_Definition_Without_ID() ) {
-          if ( gIdTable.find( idToken.mValue ) == gIdTable.end() ) {
-            cout << "Definition of ";
+          if ( gCallStack.IsDefined( idToken.mValue ) ) {
+            cout << "New definition of ";
           } // if
           else {
-            cout << "New definition of ";
+            cout << "Definition of ";
           } // else
 
           cout << idToken.mValue << " entered ...\n";
-          gIdTable[idToken.mValue] = 1;
+          gCallStack.NewID( idToken.mValue, 1 );
           return true;
         } // if
       } // if
@@ -509,15 +561,15 @@ public:
         mScanner.GetToken( token );
         idToken = token;
         if ( Function_Definition_or_Declarators() ) {
-          if ( gIdTable.find( idToken.mValue ) == gIdTable.end() ) {
-            cout << "Definition of ";
+          if ( gCallStack.IsDefined( idToken.mValue ) ) {
+            cout << "New definition of ";
           } // if
           else {
-            cout << "New definition of ";
+            cout << "Definition of ";
           } // else
 
           cout << idToken.mValue << " entered ...\n";
-          gIdTable[idToken.mValue] = 1;
+          gCallStack.NewID( idToken.mValue, 1 );
           return true;
         } // if
       } // if
@@ -647,7 +699,7 @@ public:
         mScanner.GetToken( token );
         errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
         throw errorMsg;
-      } // eles
+      } // else
 
       mScanner.GetToken( token );
       if ( token.mValue != ")" ) {
@@ -684,7 +736,7 @@ public:
       } // if
 
       mScanner.PeekToken( token );
-      if ( token.mValue == "[") {
+      if ( token.mValue == "[" ) {
         mScanner.GetToken( token );
         mScanner.GetToken( token );
         if ( token.mType != CONSTANT ) {
@@ -719,7 +771,7 @@ public:
         } // if ( token.mType != ID ) 
 
         mScanner.PeekToken( token );
-        if ( token.mValue == "[") {
+        if ( token.mValue == "[" ) {
           mScanner.GetToken( token );
           mScanner.GetToken( token );
           if ( token.mType != CONSTANT ) {
@@ -745,19 +797,25 @@ public:
 
   bool Compound_statement() {
     // '{' { declaration | statement } '}'
+    string errorMsg = "";
     Token token;
     mScanner.PeekToken( token );
     if ( token.mValue == "{" ) {
       mScanner.GetToken( token );
+      bool keepRun = true;
+      gCallStack.NewRecord();
       while ( Declaration() || Statement() ) {
-
+       
       } // while
 
-      mScanner.PeekToken( token );
-      if ( token.mValue == "}" ) {
-        mScanner.GetToken( token );
-        return true;
+      gCallStack.PopRecord();
+      mScanner.GetToken( token );
+      if ( token.mValue != "}" ) {
+        errorMsg = errorMsg + "unexpected token : '" + token.mValue + "'\n";
+        throw errorMsg;
       } // if
+
+      return true;
     } // if
 
     return false;
@@ -772,6 +830,7 @@ public:
       if ( token.mType == ID ) {
         mScanner.GetToken( token );
         if ( Rest_of_Declarators() ) {
+          gCallStack.NewID( token.mValue, 1 );
           return true;
         } // if
       } // if
@@ -937,7 +996,7 @@ public:
       idToken = token;
       mTokenString.push_back( token );
       if ( Rest_of_Identifier_started_basic_exp() ) {
-        if ( gIdTable.find( idToken.mValue ) == gIdTable.end() ) {
+        if ( !gCallStack.IsDefined( idToken.mValue ) ) {
           errorMsg = errorMsg + "undefined identifier : \'" + idToken.mValue + "\'\n";
           throw errorMsg;
         } // if
@@ -1046,7 +1105,7 @@ public:
     Token token;
     string errorMsg;
     mScanner.PeekToken( token );
-    if ( token.mValue == "[") {
+    if ( token.mValue == "[" ) {
       mScanner.GetToken( token );
       if ( !Expression() ) {
         mScanner.GetToken( token );
@@ -1302,7 +1361,7 @@ public:
         idToken = token;
         if ( token.mValue == "[" ) {
           mScanner.GetToken( token );
-          if ( gIdTable.find( idToken.mValue ) == gIdTable.end() ) {
+          if ( !gCallStack.IsDefined( idToken.mValue ) ) {
             errorMsg = errorMsg + "undefined identifier : \'" + idToken.mValue + "\'\n";
             throw errorMsg;
           } // if
@@ -1384,10 +1443,11 @@ public:
       } // else
 
       if ( success ) {
-        if ( gIdTable.find( idToken.mValue ) == gIdTable.end() ) {
+        if ( !gCallStack.IsDefined( idToken.mValue ) ) {
           errorMsg = errorMsg + "undefined identifier : \'" + idToken.mValue + "\'\n";
           throw errorMsg;
         } // if
+
         return true;
       } // if
 
@@ -1409,10 +1469,11 @@ public:
     mScanner.PeekToken( token );
     if ( token.mType == ID ) {
       mScanner.GetToken( token );
-      if ( gIdTable.find( token.mValue ) == gIdTable.end() ) {
+      if ( !gCallStack.IsDefined( token.mValue ) ) {
         errorMsg = errorMsg + "undefined identifier : \'" + token.mValue + "\'\n";
         throw errorMsg;
       } // if
+
       return true;
     } // if
     else if ( token.mType == CONSTANT ) {
@@ -1436,9 +1497,9 @@ public:
 }; // class Parser
 
 void LoadPreDefID() {
-  gIdTable["Done"] = 1;
-  gIdTable["cin"] = 1;
-  gIdTable["cout"] = 1;
+  gCallStack.NewID( "Done", 1 );
+  gCallStack.NewID( "cin", 1 );
+  gCallStack.NewID( "cout", 1 );
 } // LoadPreDefID()
 
 int main() {
