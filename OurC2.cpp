@@ -479,9 +479,33 @@ public:
 
 }; // TokenScanner
 
+class Data {
+public:
+  // type: int, float, bool, string, char, void
+  string mType;
+  
+  // variable or function
+  bool mIsVar, mIsFunc;
+  
+  // value
+  float mVal; // int, float, bool
+  string mStrVal; // string, char
+  // vector<string> mArgList;
+  vector<string> mBody; // function body or variable '[]' part
+  
+  Data() {
+    mType = "";
+    mIsVar = false;
+    mIsFunc = false;
+    mVal = 0.0;
+    mStrVal = "";
+  } // Data()
+
+}; // Data
+
 class CallStack {
 public:
-  stack< map<string, int> > mCallStack;
+  stack< map<string, Data> > mCallStack;
   
   CallStack() {
     NewRecord();
@@ -489,7 +513,7 @@ public:
 
   bool IsDefined( string token ) {
     if ( !mCallStack.empty() ) {
-      map<string, int> m = mCallStack.top() ;
+      map<string, Data> m = mCallStack.top() ;
       mCallStack.pop();
       bool success = false;
       if ( m.find( token ) == m.end() ) {
@@ -506,15 +530,77 @@ public:
     return false;
   } // IsDefined()
 
-  void NewID( string token, int value ) {
-    map<string, int> m = mCallStack.top();
+  void Get( string name, Data& data ) {
+    if ( !mCallStack.empty() ) {
+      map<string, Data> m = mCallStack.top() ;
+      mCallStack.pop();
+      if ( m.find( name ) != m.end() ) {
+        data = m[name];
+      } // if
+      else {
+        Get( name, data );
+      } // else
+
+      mCallStack.push( m );
+    } // if
+  } // Get()
+
+  void NewID( string token, vector<Token> tokenStr ) {
+    map<string, Data> m = mCallStack.top();
     mCallStack.pop();
-    m[token] = value;
+
+    Data d;
+    d.mIsVar = true;
+    d.mType = tokenStr[0].mValue;
+    int i = 0;
+    while ( i < tokenStr.size() ) {
+      if ( tokenStr[i].mValue == token ) {
+        i++;
+        while ( tokenStr[i].mValue != "," && tokenStr[i].mValue != ";" ) {
+          d.mBody.push_back( tokenStr[i].mValue );
+          i++;
+        } // while
+
+        i = tokenStr.size();
+      } // if
+
+      i++;
+    } // while
+
+    m[token] = d;
+
     mCallStack.push( m );
   } // NewID()
 
+  void NewFunc( string token ) {
+    map<string, Data> m = mCallStack.top();
+    mCallStack.pop();
+    Data d;
+    
+    d.mIsFunc = true;
+
+    m[token] = d;
+    mCallStack.push( m );
+  } // NewFunc()
+  
+  void NewFunc( string token, vector<Token> tokenStr ) {
+    map<string, Data> m = mCallStack.top();
+    mCallStack.pop();
+    Data d;
+    
+    d.mType = tokenStr[0].mValue;
+    d.mIsFunc = true;
+    // get function body
+    for ( int i = 2 ; i < tokenStr.size() ; i++ ) {
+      d.mBody.push_back( tokenStr[i].mValue );
+    } // for
+
+    m[token] = d;
+    mCallStack.push( m );
+  } // NewFunc()
+
   void NewRecord() {
-    map<string, int> m;
+    map<string, Data> m;
     mCallStack.push( m );
   } // NewRecord()
 
@@ -523,6 +609,92 @@ public:
       mCallStack.pop();
     } // if
   } // PopRecord()
+
+  void ListAllVariables() {
+    if ( !mCallStack.empty() ) {
+      map<string, Data> m = mCallStack.top() ;
+      mCallStack.pop();
+      for ( map<string, Data>::iterator it = m.begin() ; it != m.end() ; it++ ) {
+        if ( it->second.mIsVar ) {
+          cout << it->first << endl;
+        } // if
+      } // for
+
+      ListAllVariables();
+      mCallStack.push( m );
+    } // if
+  } // ListAllVariables()
+
+  void ListAllFunctions() {
+    if ( !mCallStack.empty() ) {
+      map<string, Data> m = mCallStack.top() ;
+      mCallStack.pop();
+      for ( map<string, Data>::iterator it = m.begin() ; it != m.end() ; it++ ) {
+        if ( it->second.mIsFunc ) {
+          cout << it->first << "()\n";
+        } // if
+      } // for
+
+      ListAllFunctions();
+      mCallStack.push( m );
+    } // if
+  } // ListAllFunctions()
+
+  void ListVariable( string name ) {
+    if ( IsDefined( name ) ) {
+      Data d;
+      Get( name, d );
+      cout << d.mType << " " << name;
+      int indentNum = 0;
+      for ( int i = 0 ; i < d.mBody.size() ; i++ ) {
+        if ( d.mBody[i] != "[" && d.mBody[i] != "(" ) {
+          cout << " ";
+        } // if
+        
+        cout << d.mBody[i];
+      } // for
+
+      cout << " ;\n";
+    } // if
+  } // ListVariable()
+
+  void ListFunction ( string name ) {
+    if ( IsDefined( name ) ) {
+      Data d;
+      Get( name, d );
+      cout << d.mType << " " << name;
+      int indentNum = 0;
+      bool newLine = false;
+      for ( int i = 0 ; i < d.mBody.size() ; i++ ) {
+        if ( d.mBody[i] == "}" ) {
+          indentNum--;
+        } // if
+
+        if ( newLine ) {
+          for ( int j = 0 ; j < indentNum ; j++ ) {
+            cout << "  ";
+          } // for
+
+          newLine = false;
+        } // if
+        else if ( d.mBody[i] != "[" && d.mBody[i] != "(" ) {
+          cout << " ";
+        } // if
+        
+        cout << d.mBody[i];
+        if ( d.mBody[i] == "{" ) {
+          cout << endl;
+          indentNum++;
+          newLine = true;
+        } // if
+        else if ( d.mBody[i] == ";" || d.mBody[i] == "}" ) {
+          cout << endl;
+          newLine = true;
+        } // if
+
+      } // for
+    } // if
+  } // ListFunction()
 
 }; // CallStack
 
@@ -573,6 +745,8 @@ public:
       else {
         keepRun = false;
       } // else
+      
+      int breakpoint = 1;
     } // while
   } // User_Input()
 
@@ -599,8 +773,8 @@ public:
             cout << "Definition of ";
           } // else
 
-          cout << idToken.mValue << " entered ...\n";
-          gCallStack.NewID( idToken.mValue, 1 );
+          cout << idToken.mValue << "() entered ...\n";
+          gCallStack.NewFunc( idToken.mValue, mTokenString );
           return true;
         } // if
       } // if
@@ -618,19 +792,6 @@ public:
         queue<string> idQueue;
         idQueue.push( idToken.mValue );
         if ( Function_Definition_or_Declarators( idQueue ) ) {
-          while ( !idQueue.empty() ) {            
-            if ( gCallStack.IsDefined( idQueue.front() ) ) {
-              cout << "New definition of ";
-            } // if
-            else {
-              cout << "Definition of ";
-            } // else
-
-            cout << idQueue.front() << " entered ...\n";
-            gCallStack.NewID( idQueue.front(), 1 );
-            idQueue.pop();
-          } // while
-
           return true;
         } // if
       } // if
@@ -657,7 +818,34 @@ public:
   } // Type_specifier()
 
   bool Function_Definition_or_Declarators( queue<string>& idQueue ) {
-    if ( Function_Definition_Without_ID() || Rest_of_Declarators( idQueue ) ) {
+    if ( Function_Definition_Without_ID() ) {
+      // store func
+      if ( gCallStack.IsDefined( idQueue.front() ) ) {
+        cout << "New definition of ";
+      } // if
+      else {
+        cout << "Definition of ";
+      } // else
+
+      cout << idQueue.front() << "() entered ...\n";
+      gCallStack.NewFunc( idQueue.front(), mTokenString );
+      idQueue.pop();
+      return true;
+    } // if
+    else if ( Rest_of_Declarators( idQueue ) ) {
+      while ( !idQueue.empty() ) {            
+        if ( gCallStack.IsDefined( idQueue.front() ) ) {
+          cout << "New definition of ";
+        } // if
+        else {
+          cout << "Definition of ";
+        } // else
+
+        cout << idQueue.front() << " entered ...\n";
+        gCallStack.NewID( idQueue.front(), mTokenString );
+        idQueue.pop();
+      } // while
+
       return true;
     } // if
 
@@ -727,6 +915,7 @@ public:
           mScanner.GetToken( token );
           mTokenString.push_back( token );
 
+          mScanner.PeekToken( token );
           if ( token.mValue == "]" ) {
             mScanner.GetToken( token );
             mTokenString.push_back( token );
@@ -765,6 +954,7 @@ public:
       mScanner.GetToken( token );
       mTokenString.push_back( token );
 
+      gCallStack.NewRecord();
       mScanner.PeekToken( token );
       if ( token.mType == VOID ) {
         mScanner.GetToken( token );
@@ -774,6 +964,7 @@ public:
 
       } // if
       else {
+        gCallStack.PopRecord();
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
         throw errorMsg;
@@ -782,11 +973,11 @@ public:
       mScanner.GetToken( token );
       mTokenString.push_back( token );
       if ( token.mValue != ")" ) {
+        gCallStack.PopRecord();
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
         throw errorMsg;
       } // if
 
-      gCallStack.NewRecord();
       if ( !Compound_statement() ) {
         gCallStack.PopRecord();
         mScanner.GetToken( token );
@@ -819,8 +1010,6 @@ public:
         throw errorMsg;
       } // if
 
-      gCallStack.NewID( token.mValue, 1 );
-
       mScanner.PeekToken( token );
       if ( token.mValue == "[" ) {
         mScanner.GetToken( token );
@@ -841,6 +1030,8 @@ public:
         } // if
 
       } // if
+
+      gCallStack.NewID( token.mValue, mTokenString );
 
       mScanner.PeekToken( token );
       while ( token.mValue == "," ) {
@@ -864,12 +1055,11 @@ public:
           throw errorMsg;
         } // if ( token.mType != ID ) 
 
-        gCallStack.NewID( token.mValue, 1 );
-
         mScanner.PeekToken( token );
         if ( token.mValue == "[" ) {
           mScanner.GetToken( token );
           mTokenString.push_back( token );
+          
           mScanner.GetToken( token );
           mTokenString.push_back( token );
           if ( token.mType != CONSTANT ) {
@@ -884,6 +1074,8 @@ public:
             throw errorMsg;
           } // if
         } // if
+
+        gCallStack.NewID( token.mValue, mTokenString );
 
         mScanner.PeekToken( token );
       } // while
@@ -931,7 +1123,7 @@ public:
         idQueue.push( token.mValue );
         if ( Rest_of_Declarators( idQueue ) ) {
           while ( !idQueue.empty() ) {
-            gCallStack.NewID( idQueue.front(), 1 );
+            gCallStack.NewID( idQueue.front(), mTokenString );
             idQueue.pop();
           } // while
           
@@ -1074,17 +1266,42 @@ public:
       gCallStack.PopRecord();
     } // else
 
+    if ( firstTokenMatch && !success ) {
+      mScanner.GetToken( token );
+      ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
+      throw errorMsg;
+    } // if
+
     if ( mTokenString.size() == 4 && mTokenString[0].mValue == "Done"
          && mTokenString[1].mValue == "(" && mTokenString[2].mValue == ")"
          && mTokenString[3].mValue == ";" ) {
       ErrorMsg errorMsg( mScanner.mLine, QUIT_ERROR, "" );
       throw errorMsg;
     } // if
-    else if ( firstTokenMatch && !success ) {
-      mScanner.GetToken( token );
-      ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
-      throw errorMsg;
-    } // else if
+    else if ( mTokenString.size() == 4 && mTokenString[0].mValue == "ListAllFunctions"
+         && mTokenString[1].mValue == "(" && mTokenString[2].mValue == ")"
+         && mTokenString[3].mValue == ";" ) {
+      gCallStack.ListAllFunctions();
+    } // if
+    else if ( mTokenString.size() == 4 && mTokenString[0].mValue == "ListAllVariables"
+         && mTokenString[1].mValue == "(" && mTokenString[2].mValue == ")"
+         && mTokenString[3].mValue == ";" ) {
+      gCallStack.ListAllVariables();
+    } // if
+    else if ( mTokenString.size() == 5 && mTokenString[0].mValue == "ListFunction"
+         && mTokenString[1].mValue == "(" && mTokenString[2].mType == CONSTANT
+         && mTokenString[3].mValue == ")" && mTokenString[4].mValue == ";" ) {
+      string name = mTokenString[2].mValue;
+      name = name.substr( 1, name.size() - 2 );
+      gCallStack.ListFunction( name );
+    } // if
+    else if ( mTokenString.size() == 5 && mTokenString[0].mValue == "ListVariable"
+         && mTokenString[1].mValue == "(" && mTokenString[2].mType == CONSTANT
+         && mTokenString[3].mValue == ")" && mTokenString[4].mValue == ";" ) {
+      string name = mTokenString[2].mValue;
+      name = name.substr( 1, name.size() - 2 );
+      gCallStack.ListVariable( name );
+    } // if
 
     return success;
   } // Statement()
@@ -2016,9 +2233,13 @@ public:
 }; // class Parser
 
 void LoadPreDefID() {
-  gCallStack.NewID( "Done", 1 );
-  gCallStack.NewID( "cin", 1 );
-  gCallStack.NewID( "cout", 1 );
+  gCallStack.NewFunc( "Done" );
+  gCallStack.NewFunc( "cin" );
+  gCallStack.NewFunc( "cout" );
+  gCallStack.NewFunc( "ListAllVariables" );
+  gCallStack.NewFunc( "ListAllFunctions" );
+  gCallStack.NewFunc( "ListVariable" );
+  gCallStack.NewFunc( "ListFunction" );
 } // LoadPreDefID()
 
 int main() {
