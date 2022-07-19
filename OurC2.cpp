@@ -64,18 +64,18 @@ void ReadLine() {
 
 enum TokenType {
   ID, CONSTANT, UNDEFINED_TYPE, 
-  GE, LE, // >= <=
-  EQ, NEQ, // == !=
-  INT, FLOAT, CHAR,
+  GE, LE,             // >= <=
+  EQ, NEQ,            // == !=   
+  INT, FLOAT, CHAR,   
   STRING, BOOL, VOID,
   IF, ELSE, WHILE,
   DO, RETURN,
-  AND, OR, // && ||
-  PE, ME, // += -=
-  TE, DE, // *= /=
-  RE, // %=
-  PP, MM, // ++ --
-  RS, LS // >> <<
+  AND, OR,            // && ||
+  PE, ME,             // += -=
+  TE, DE,             // *= /=
+  RE,                 // %=
+  PP, MM,             // ++ --
+  RS, LS              // >> <<
 };
 
 enum ErrorType {
@@ -122,7 +122,6 @@ public:
 }; // ErrorMsg
 
 class Token {
-
 public:
   string mValue;
   TokenType mType;
@@ -148,43 +147,7 @@ public:
 
 class TokenScanner {
   bool mIsNewLine;
-  bool mFirstValidChFound;
-
-  bool GetChar( char& ch ) {
-    if ( mNextChar != '\0' ) {
-      ch = mNextChar;
-      mNextChar = '\0';
-    } // if nextChar != '\0'
-    else if ( cin.get( ch ) ) {
-      ;
-    } // if cin >> ch
-    else {
-      return false;
-    } // else
-
-    // get char success
-    if ( !mFirstValidChFound ) {
-      if ( IsWhitespace( ch ) ) {
-        return true;
-      } // if
-      else {
-        mFirstValidChFound = true;
-      } // else
-    } // if
-
-    if ( mIsNewLine ) {
-      mLine++;
-      mColumn = 0;
-      mIsNewLine = false;
-    } // if
-
-    if ( ch == '\n' ) {
-      mIsNewLine = true;
-    } // if
-
-    mColumn++;
-    return true;
-  } // GetChar()
+  // bool mFirstValidChFound;
 
   bool PeekChar( char& ch ) {
     if ( mNextChar == '\0' && ! ( cin.get( mNextChar ) ) ) {
@@ -203,7 +166,7 @@ class TokenScanner {
     } // while
 
     if ( getCharSuccess && ch == '/' ) {
-      // reminder: divide symbol "/" will into this section
+      // reminder: divide symbol( "/" ) will be in this section
       char tmpChar = '\0';
       if ( PeekChar( tmpChar ) && tmpChar == '/' ) {
         ReadLine();
@@ -374,8 +337,45 @@ public:
     mIsNewLine = true;
     mNextChar = '\0';
     mNextToken.Init();
-    mFirstValidChFound = false;
+    // mFirstValidChFound = false;
   } // Init()
+
+  bool GetChar( char& ch ) {
+    if ( mNextChar != '\0' ) {
+      ch = mNextChar;
+      mNextChar = '\0';
+    } // if nextChar != '\0'
+    else if ( cin.get( ch ) ) {
+      ;
+    } // if cin >> ch
+    else {
+      return false;
+    } // else
+
+    // check if valid char is encountered
+    // only counting line number when true
+    // if ( !mFirstValidChFound ) {
+    //   if ( IsWhitespace( ch ) ) {
+    //     return true;
+    //   } // if
+    //   else {
+    //     mFirstValidChFound = true;
+    //   } // else
+    // } // if
+
+    if ( mIsNewLine ) {
+      mLine++;
+      mColumn = 0;
+      mIsNewLine = false;
+    } // if
+
+    if ( ch == '\n' ) {
+      mIsNewLine = true;
+    } // if
+
+    mColumn++;
+    return true;
+  } // GetChar()
 
   bool ReadLine() {
     char tmpChar = '\0';
@@ -387,6 +387,25 @@ public:
 
     return getCharSuccess;
   } // ReadLine()
+
+  void CleanInputAfterCMD() {
+    char ch = '\0' ;
+    PeekChar( ch );
+    while ( ch == ' ' || ch == '\t' ) {
+      GetChar( ch );
+      PeekChar( ch );
+    } // while
+
+    if ( ch == '\n' ) {
+      GetChar( ch );
+    } // if
+    else if ( ch == '/' ) {
+      ch = cin.peek();
+      if ( ch == '/' ) {
+        ReadLine();
+      } // if
+    } // if
+  } // CleanInputAfterCMD()
 
   bool GetToken( Token& token ) {
     if ( !mNextToken.IsEmpty() ) {
@@ -508,7 +527,17 @@ public:
   stack< map<string, Data> > mCallStack;
   
   CallStack() {
-    NewRecord();
+    map<string, Data> m;
+    Data d;
+    m["Done"] = d;
+    m["cin"] = d;
+    m["cout"] = d;
+    m["ListAllVariables"] = d;
+    m["ListAllFunctions"] = d;
+    m["ListVariable"] = d;
+    m["ListFunction"] = d;
+
+    mCallStack.push( m );
   } // CallStack()
 
   bool IsDefined( string token ) {
@@ -556,7 +585,7 @@ public:
     while ( i < tokenStr.size() ) {
       if ( tokenStr[i].mValue == token ) {
         i++;
-        while ( tokenStr[i].mValue != "," && tokenStr[i].mValue != ";" ) {
+        while ( i < tokenStr.size() && tokenStr[i].mValue != "," && tokenStr[i].mValue != ";" ) {
           d.mBody.push_back( tokenStr[i].mValue );
           i++;
         } // while
@@ -609,6 +638,12 @@ public:
       mCallStack.pop();
     } // if
   } // PopRecord()
+
+  void PopExceptBase() {
+    while ( mCallStack.size() != 1 ) {
+      PopRecord();
+    } // while
+  } // PopExceptBase()
 
   void ListAllVariables() {
     if ( !mCallStack.empty() ) {
@@ -677,12 +712,17 @@ public:
 
           newLine = false;
         } // if
-        else if ( d.mBody[i] != "[" && d.mBody[i] != "(" ) {
+        else if ( d.mBody[i] != "[" && d.mBody[i] != "(" 
+                  && d.mBody[i] != "++" && d.mBody[i] != "--" ) {
           cout << " ";
         } // if
         
         cout << d.mBody[i];
-        if ( d.mBody[i] == "{" ) {
+
+        if ( d.mBody[i] == "while" || d.mBody[i] == "if" ) {
+          cout << " ";
+        } // if
+        else if ( d.mBody[i] == "{" ) {
           cout << endl;
           indentNum++;
           newLine = true;
@@ -731,22 +771,23 @@ public:
       throw errorMsg;
     } // else
 
+    mScanner.CleanInputAfterCMD();
+
     bool keepRun = true;
     while ( keepRun ) {
       mTokenString.clear();
       mScanner.Init();
       cout << "> ";
       if ( Definition() ) {
-
+        mScanner.CleanInputAfterCMD();
       } // if
       else if ( Statement() ) {
         cout << "Statement executed ...\n";
+        mScanner.CleanInputAfterCMD();
       } // if
       else {
         keepRun = false;
       } // else
-      
-      int breakpoint = 1;
     } // while
   } // User_Input()
 
@@ -955,6 +996,7 @@ public:
       mTokenString.push_back( token );
 
       gCallStack.NewRecord();
+
       mScanner.PeekToken( token );
       if ( token.mType == VOID ) {
         mScanner.GetToken( token );
@@ -964,7 +1006,6 @@ public:
 
       } // if
       else {
-        gCallStack.PopRecord();
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
         throw errorMsg;
@@ -973,13 +1014,11 @@ public:
       mScanner.GetToken( token );
       mTokenString.push_back( token );
       if ( token.mValue != ")" ) {
-        gCallStack.PopRecord();
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
         throw errorMsg;
       } // if
 
       if ( !Compound_statement() ) {
-        gCallStack.PopRecord();
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
         throw errorMsg;
@@ -994,7 +1033,7 @@ public:
   } // Function_Definition_Without_ID()
 
   bool Formal_parameter_list() {
-    Token token;
+    Token token, idToken;
     bool matchFirstToken = false, success = false;
     if ( Type_specifier() ) {
       mScanner.PeekToken( token );
@@ -1009,6 +1048,8 @@ public:
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
         throw errorMsg;
       } // if
+
+      idToken = token;
 
       mScanner.PeekToken( token );
       if ( token.mValue == "[" ) {
@@ -1031,7 +1072,7 @@ public:
 
       } // if
 
-      gCallStack.NewID( token.mValue, mTokenString );
+      gCallStack.NewID( idToken.mValue, mTokenString );
 
       mScanner.PeekToken( token );
       while ( token.mValue == "," ) {
@@ -1055,6 +1096,8 @@ public:
           throw errorMsg;
         } // if ( token.mType != ID ) 
 
+        idToken = token;
+
         mScanner.PeekToken( token );
         if ( token.mValue == "[" ) {
           mScanner.GetToken( token );
@@ -1075,7 +1118,7 @@ public:
           } // if
         } // if
 
-        gCallStack.NewID( token.mValue, mTokenString );
+        gCallStack.NewID( idToken.mValue, mTokenString );
 
         mScanner.PeekToken( token );
       } // while
@@ -2232,16 +2275,6 @@ public:
   
 }; // class Parser
 
-void LoadPreDefID() {
-  gCallStack.NewFunc( "Done" );
-  gCallStack.NewFunc( "cin" );
-  gCallStack.NewFunc( "cout" );
-  gCallStack.NewFunc( "ListAllVariables" );
-  gCallStack.NewFunc( "ListAllFunctions" );
-  gCallStack.NewFunc( "ListVariable" );
-  gCallStack.NewFunc( "ListFunction" );
-} // LoadPreDefID()
-
 int main() {
   int testNum = 0;
   cin >> testNum ;
@@ -2250,7 +2283,6 @@ int main() {
   cout << "Our-C running ...\n";
   bool quit = false;
   Parser parser;
-  LoadPreDefID();
   while ( !quit ) {
     try {
       parser.User_Input();
@@ -2273,6 +2305,7 @@ int main() {
 
         cout << errorMsg.mToken + "\'\n";
         parser.mScanner.ReadLine();
+        gCallStack.PopExceptBase();
       } // else
     } // catch
   } // while
