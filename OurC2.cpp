@@ -5,11 +5,12 @@
 # include <cmath>
 # include <cstdlib>
 # include <iomanip>
-# include <exception>
 # include <stack>
 # include <queue>
 
 using namespace std;
+
+int gTestNum = 0;
 
 bool IsInt( float num ) {
   return floor( num ) == num;
@@ -146,9 +147,6 @@ public:
 }; // class Token
 
 class TokenScanner {
-  bool mIsNewLine;
-  // bool mFirstValidChFound;
-
   bool PeekChar( char& ch ) {
     if ( mNextChar == '\0' && ! ( cin.get( mNextChar ) ) ) {
       return false;
@@ -326,6 +324,7 @@ public:
   int mColumn;
   char mNextChar;
   Token mNextToken;
+  bool mIsNewLine;
 
   TokenScanner() {
     Init();
@@ -337,7 +336,6 @@ public:
     mIsNewLine = true;
     mNextChar = '\0';
     mNextToken.Init();
-    // mFirstValidChFound = false;
   } // Init()
 
   bool GetChar( char& ch ) {
@@ -390,20 +388,24 @@ public:
 
   void CleanInputAfterCMD() {
     char ch = '\0' ;
-    PeekChar( ch );
+    ch = cin.peek();
     while ( ch == ' ' || ch == '\t' ) {
       GetChar( ch );
-      PeekChar( ch );
+      ch = cin.peek();
     } // while
 
     if ( ch == '\n' ) {
       GetChar( ch );
     } // if
     else if ( ch == '/' ) {
+      GetChar( ch );
       ch = cin.peek();
       if ( ch == '/' ) {
         ReadLine();
       } // if
+      else {
+        cin.putback( '/' );
+      } // else
     } // if
   } // CleanInputAfterCMD()
 
@@ -411,6 +413,8 @@ public:
     if ( !mNextToken.IsEmpty() ) {
       token = mNextToken;
       mNextToken.Init();
+      
+
       return true;
     } // if
 
@@ -477,6 +481,8 @@ public:
       DetermineTokenType( token );
     } // else
 
+    
+
     return getTokenSuces;
   } // GetToken()
 
@@ -509,24 +515,31 @@ public:
   // value
   float mVal; // int, float, bool
   string mStrVal; // string, char
-  // vector<string> mArgList;
   vector<string> mBody; // function body or variable '[]' part
   
   Data() {
+    Init();
+  } // Data()
+
+  ~Data() {
+  } // ~Data()
+
+  void Init() {
     mType = "";
     mIsVar = false;
     mIsFunc = false;
     mVal = 0.0;
     mStrVal = "";
-  } // Data()
+  } // Init()
 
 }; // Data
 
 class CallStack {
 public:
-  stack< map<string, Data> > mCallStack;
+  stack< map<string, Data> >* mCallStack;
   
   CallStack() {
+    mCallStack = new stack< map<string, Data> >();
     map<string, Data> m;
     Data d;
     m["Done"] = d;
@@ -536,23 +549,29 @@ public:
     m["ListAllFunctions"] = d;
     m["ListVariable"] = d;
     m["ListFunction"] = d;
-
-    mCallStack.push( m );
+    // cout << "stack size: " << mCallStack.size();
+    mCallStack->push( m );
   } // CallStack()
 
+  ~CallStack() {
+    delete mCallStack;
+  } // ~CallStack()
+
   bool IsDefined( string token ) {
-    if ( !mCallStack.empty() ) {
-      map<string, Data> m = mCallStack.top() ;
-      mCallStack.pop();
+    if ( !mCallStack->empty() ) {
+      map<string, Data> m = mCallStack->top() ;
+      mCallStack->pop();
       bool success = false;
+      
       if ( m.find( token ) == m.end() ) {
         success = IsDefined( token );
+        
       } // if
       else {
         success = true;
       } // else
 
-      mCallStack.push( m );
+      mCallStack->push( m );
       return success;
     } // if
     
@@ -560,9 +579,9 @@ public:
   } // IsDefined()
 
   void Get( string name, Data& data ) {
-    if ( !mCallStack.empty() ) {
-      map<string, Data> m = mCallStack.top() ;
-      mCallStack.pop();
+    if ( !mCallStack->empty() ) {
+      map<string, Data> m = mCallStack->top() ;
+      mCallStack->pop();
       if ( m.find( name ) != m.end() ) {
         data = m[name];
       } // if
@@ -570,27 +589,28 @@ public:
         Get( name, data );
       } // else
 
-      mCallStack.push( m );
+      mCallStack->push( m );
     } // if
   } // Get()
 
-  void NewID( string token, vector<Token> tokenStr ) {
-    map<string, Data> m = mCallStack.top();
-    mCallStack.pop();
+  void NewID( string token, vector<Token>* tokenStr ) {
+    map<string, Data> m = mCallStack->top();
+    mCallStack->pop();
 
     Data d;
     d.mIsVar = true;
-    d.mType = tokenStr[0].mValue;
+    d.mType = tokenStr->at( 0 ).mValue;
     int i = 0;
-    while ( i < tokenStr.size() ) {
-      if ( tokenStr[i].mValue == token ) {
+    while ( i < tokenStr->size() ) {
+      if ( tokenStr->at( i ).mValue == token ) {
         i++;
-        while ( i < tokenStr.size() && tokenStr[i].mValue != "," && tokenStr[i].mValue != ";" ) {
-          d.mBody.push_back( tokenStr[i].mValue );
+        while ( i < tokenStr->size() && tokenStr->at( i ).mValue != "," 
+                && tokenStr->at( i ).mValue != ";" ) {
+          d.mBody.push_back( tokenStr->at( i ).mValue );
           i++;
         } // while
 
-        i = tokenStr.size();
+        i = tokenStr->size();
       } // if
 
       i++;
@@ -598,57 +618,63 @@ public:
 
     m[token] = d;
 
-    mCallStack.push( m );
+    mCallStack->push( m );
   } // NewID()
 
   void NewFunc( string token ) {
-    map<string, Data> m = mCallStack.top();
-    mCallStack.pop();
+    map<string, Data> m = mCallStack->top();
+    mCallStack->pop();
     Data d;
     
     d.mIsFunc = true;
 
     m[token] = d;
-    mCallStack.push( m );
+    mCallStack->push( m );
   } // NewFunc()
   
-  void NewFunc( string token, vector<Token> tokenStr ) {
-    map<string, Data> m = mCallStack.top();
-    mCallStack.pop();
+  void NewFunc( string name, vector<Token>* tokenStr ) {
+    map<string, Data> m = mCallStack->top();
+    mCallStack->pop();
     Data d;
     
-    d.mType = tokenStr[0].mValue;
+    d.mType = tokenStr->at( 0 ).mValue;
     d.mIsFunc = true;
     // get function body
-    for ( int i = 2 ; i < tokenStr.size() ; i++ ) {
-      d.mBody.push_back( tokenStr[i].mValue );
+    for ( int i = 2 ; i < tokenStr->size() ; i++ ) {
+      d.mBody.push_back( tokenStr->at( i ).mValue );
     } // for
 
-    m[token] = d;
-    mCallStack.push( m );
+    m[name] = d;
+    mCallStack->push( m );
   } // NewFunc()
 
   void NewRecord() {
     map<string, Data> m;
-    mCallStack.push( m );
+    mCallStack->push( m );
   } // NewRecord()
 
   void PopRecord() {
-    if ( !mCallStack.empty() ) {
-      mCallStack.pop();
+    if ( !mCallStack->empty() ) {
+      // map<string, Data> m = mCallStack.top();
+      mCallStack->pop();
     } // if
   } // PopRecord()
 
   void PopExceptBase() {
-    while ( mCallStack.size() != 1 ) {
+    /*
+    if ( gTestNum == 2 ) {
+      cout << mCallStack->size();
+    } // if
+    */
+    while ( mCallStack->size() != 1 ) {
       PopRecord();
     } // while
   } // PopExceptBase()
 
   void ListAllVariables() {
-    if ( !mCallStack.empty() ) {
-      map<string, Data> m = mCallStack.top() ;
-      mCallStack.pop();
+    if ( !mCallStack->empty() ) {
+      map<string, Data> m = mCallStack->top() ;
+      mCallStack->pop();
       for ( map<string, Data>::iterator it = m.begin() ; it != m.end() ; it++ ) {
         if ( it->second.mIsVar ) {
           cout << it->first << endl;
@@ -656,14 +682,14 @@ public:
       } // for
 
       ListAllVariables();
-      mCallStack.push( m );
+      mCallStack->push( m );
     } // if
   } // ListAllVariables()
 
   void ListAllFunctions() {
-    if ( !mCallStack.empty() ) {
-      map<string, Data> m = mCallStack.top() ;
-      mCallStack.pop();
+    if ( !mCallStack->empty() ) {
+      map<string, Data> m = mCallStack->top() ;
+      mCallStack->pop();
       for ( map<string, Data>::iterator it = m.begin() ; it != m.end() ; it++ ) {
         if ( it->second.mIsFunc ) {
           cout << it->first << "()\n";
@@ -671,7 +697,7 @@ public:
       } // for
 
       ListAllFunctions();
-      mCallStack.push( m );
+      mCallStack->push( m );
     } // if
   } // ListAllFunctions()
 
@@ -682,18 +708,18 @@ public:
       cout << d.mType << " " << name;
       int indentNum = 0;
       for ( int i = 0 ; i < d.mBody.size() ; i++ ) {
-        if ( d.mBody[i] != "[" && d.mBody[i] != "(" ) {
+        if ( d.mBody.at( i ) != "[" && d.mBody.at( i ) != "(" ) {
           cout << " ";
         } // if
         
-        cout << d.mBody[i];
+        cout << d.mBody.at( i );
       } // for
 
       cout << " ;\n";
     } // if
   } // ListVariable()
 
-  void ListFunction ( string name ) {
+  void ListFunction( string name ) {
     if ( IsDefined( name ) ) {
       Data d;
       Get( name, d );
@@ -701,7 +727,7 @@ public:
       int indentNum = 0;
       bool newLine = false;
       for ( int i = 0 ; i < d.mBody.size() ; i++ ) {
-        if ( d.mBody[i] == "}" ) {
+        if ( d.mBody.at( i ) == "}" ) {
           indentNum--;
         } // if
 
@@ -712,22 +738,22 @@ public:
 
           newLine = false;
         } // if
-        else if ( d.mBody[i] != "[" && d.mBody[i] != "(" 
-                  && d.mBody[i] != "++" && d.mBody[i] != "--" ) {
+        else if ( d.mBody.at( i ) != "[" && d.mBody.at( i ) != "(" 
+                  && d.mBody.at( i ) != "++" && d.mBody.at( i ) != "--" ) {
           cout << " ";
         } // if
         
-        cout << d.mBody[i];
+        cout << d.mBody.at( i );
 
-        if ( d.mBody[i] == "while" || d.mBody[i] == "if" ) {
+        if ( d.mBody.at( i ) == "while" || d.mBody.at( i ) == "if" ) {
           cout << " ";
         } // if
-        else if ( d.mBody[i] == "{" ) {
+        else if ( d.mBody.at( i ) == "{" ) {
           cout << endl;
           indentNum++;
           newLine = true;
         } // if
-        else if ( d.mBody[i] == ";" || d.mBody[i] == "}" ) {
+        else if ( d.mBody.at( i ) == ";" || d.mBody.at( i ) == "}" ) {
           cout << endl;
           newLine = true;
         } // if
@@ -738,26 +764,35 @@ public:
 
 }; // CallStack
 
-CallStack gCallStack;
+CallStack* gCallStack;
 
 class Parser {
 public:
   TokenScanner mScanner;
-  vector<Token> mTokenString;
-  /*
-  bool GetToken( Token& token ) {
-    bool success = mScanner.GetToken( token );
-    if ( success ) {
-      mTokenString.push_back( token );
-    } // if
+  vector<Token>* mTokenString;
+  int mInstructionNum;
 
-    return success;
-  } // GetToken()
-  */
+  Parser() {
+    mTokenString = new vector<Token>();
+    mInstructionNum = 0;
+  } // Parser()
+
+  ~Parser() {
+    delete mTokenString;
+    mTokenString = NULL;
+  } // ~Parser()
+
   void User_Input() {
     Token token;
-    mTokenString.clear();
+    mTokenString->clear();
     mScanner.Init();
+    mInstructionNum++;
+    /*
+    if ( gTestNum == 2 && mInstructionNum > 2 ) {
+      ErrorMsg errorMsg( mScanner.mLine, QUIT_ERROR, "" );
+      throw errorMsg;
+    } // if
+    */
     cout << "> ";
     if ( Definition() ) {
 
@@ -773,9 +808,16 @@ public:
 
     mScanner.CleanInputAfterCMD();
 
+    mInstructionNum++;
+    /*
+    if ( gTestNum == 2 && mInstructionNum > 2 ) {
+      ErrorMsg errorMsg( mScanner.mLine, QUIT_ERROR, "" );
+      throw errorMsg;
+    } // if
+    */
     bool keepRun = true;
     while ( keepRun ) {
-      mTokenString.clear();
+      mTokenString->clear();
       mScanner.Init();
       cout << "> ";
       if ( Definition() ) {
@@ -786,8 +828,11 @@ public:
         mScanner.CleanInputAfterCMD();
       } // if
       else {
-        keepRun = false;
+        mScanner.GetToken( token );
+        ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
+        throw errorMsg;
       } // else
+
     } // while
   } // User_Input()
 
@@ -798,16 +843,16 @@ public:
     mScanner.PeekToken( token );
     if ( token.mType == VOID ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
 
       mScanner.PeekToken( token );
       if ( token.mType == ID ) {
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
         idToken = token;
         
         if ( Function_Definition_Without_ID(  ) ) {
-          if ( gCallStack.IsDefined( idToken.mValue ) ) {
+          if ( gCallStack->IsDefined( idToken.mValue ) ) {
             cout << "New definition of ";
           } // if
           else {
@@ -815,7 +860,7 @@ public:
           } // else
 
           cout << idToken.mValue << "() entered ...\n";
-          gCallStack.NewFunc( idToken.mValue, mTokenString );
+          gCallStack->NewFunc( idToken.mValue, mTokenString );
           return true;
         } // if
       } // if
@@ -828,7 +873,7 @@ public:
       mScanner.PeekToken( token );
       if ( token.mType == ID ) {
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
         idToken = token;
         queue<string> idQueue;
         idQueue.push( idToken.mValue );
@@ -851,7 +896,7 @@ public:
     if ( token.mType == INT || token.mType == FLOAT || token.mType == CHAR
          || token.mType == STRING || token.mType == BOOL ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       return true;
     } // if
 
@@ -861,7 +906,7 @@ public:
   bool Function_Definition_or_Declarators( queue<string>& idQueue ) {
     if ( Function_Definition_Without_ID() ) {
       // store func
-      if ( gCallStack.IsDefined( idQueue.front() ) ) {
+      if ( gCallStack->IsDefined( idQueue.front() ) ) {
         cout << "New definition of ";
       } // if
       else {
@@ -869,13 +914,13 @@ public:
       } // else
 
       cout << idQueue.front() << "() entered ...\n";
-      gCallStack.NewFunc( idQueue.front(), mTokenString );
+      gCallStack->NewFunc( idQueue.front(), mTokenString );
       idQueue.pop();
       return true;
     } // if
     else if ( Rest_of_Declarators( idQueue ) ) {
       while ( !idQueue.empty() ) {            
-        if ( gCallStack.IsDefined( idQueue.front() ) ) {
+        if ( gCallStack->IsDefined( idQueue.front() ) ) {
           cout << "New definition of ";
         } // if
         else {
@@ -883,7 +928,7 @@ public:
         } // else
 
         cout << idQueue.front() << " entered ...\n";
-        gCallStack.NewID( idQueue.front(), mTokenString );
+        gCallStack->NewID( idQueue.front(), mTokenString );
         idQueue.pop();
       } // while
 
@@ -901,17 +946,17 @@ public:
     mScanner.PeekToken( token );
     if ( token.mValue == "[" ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
 
       mScanner.PeekToken( token );
       if ( token.mType == CONSTANT ) {
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
 
         mScanner.PeekToken( token );
         if ( token.mValue == "]" ) {
           mScanner.GetToken( token );
-          mTokenString.push_back( token );
+          mTokenString->push_back( token );
         } // if
         else {
           error = true;
@@ -932,7 +977,7 @@ public:
     mScanner.PeekToken( token );
     while ( token.mValue == "," ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
 
       mScanner.PeekToken( token );
       if ( token.mType != ID ) {
@@ -942,24 +987,24 @@ public:
       } // if
 
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       idQueue.push( token.mValue );
 
       // [ '[' Constant ']' ]
       mScanner.PeekToken( token );
       if ( token.mValue == "[" ) {
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
 
         mScanner.PeekToken( token );
         if ( token.mType == CONSTANT ) {
           mScanner.GetToken( token );
-          mTokenString.push_back( token );
+          mTokenString->push_back( token );
 
           mScanner.PeekToken( token );
           if ( token.mValue == "]" ) {
             mScanner.GetToken( token );
-            mTokenString.push_back( token );
+            mTokenString->push_back( token );
           } // if
           else {
             error = true;
@@ -980,7 +1025,7 @@ public:
     mScanner.PeekToken( token );
     if ( token.mValue == ";" ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       return true;
     } // if
 
@@ -993,26 +1038,21 @@ public:
     mScanner.PeekToken( token );
     if ( token.mValue == "(" ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
 
-      gCallStack.NewRecord();
+      gCallStack->NewRecord();
 
       mScanner.PeekToken( token );
       if ( token.mType == VOID ) {
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
       } // if
       else if ( Formal_parameter_list() ) {
 
       } // if
-      else {
-        mScanner.GetToken( token );
-        ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
-        throw errorMsg;
-      } // else
 
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( token.mValue != ")" ) {
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
         throw errorMsg;
@@ -1024,7 +1064,7 @@ public:
         throw errorMsg;
       } // if
 
-      gCallStack.PopRecord();
+      gCallStack->PopRecord();
 
       return true;
     } // if ( token.mValue == "(" )
@@ -1039,11 +1079,11 @@ public:
       mScanner.PeekToken( token );
       if ( token.mValue == "&" ) {
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
       } // if
 
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( token.mType != ID ) {
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
         throw errorMsg;
@@ -1054,17 +1094,17 @@ public:
       mScanner.PeekToken( token );
       if ( token.mValue == "[" ) {
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
 
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
         if ( token.mType != CONSTANT ) {
           ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
           throw errorMsg;
         } // if
 
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
         if ( token.mValue != "]" ) {
           ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
           throw errorMsg;
@@ -1072,12 +1112,12 @@ public:
 
       } // if
 
-      gCallStack.NewID( idToken.mValue, mTokenString );
+      gCallStack->NewID( idToken.mValue, mTokenString );
 
       mScanner.PeekToken( token );
       while ( token.mValue == "," ) {
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
         if ( !Type_specifier() ) {
           ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
           throw errorMsg;
@@ -1086,11 +1126,11 @@ public:
         mScanner.PeekToken( token );
         if ( token.mValue == "&" ) {
           mScanner.GetToken( token );
-          mTokenString.push_back( token );
+          mTokenString->push_back( token );
         } // if
 
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
         if ( token.mType != ID ) {
           ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
           throw errorMsg;
@@ -1101,24 +1141,24 @@ public:
         mScanner.PeekToken( token );
         if ( token.mValue == "[" ) {
           mScanner.GetToken( token );
-          mTokenString.push_back( token );
+          mTokenString->push_back( token );
           
           mScanner.GetToken( token );
-          mTokenString.push_back( token );
+          mTokenString->push_back( token );
           if ( token.mType != CONSTANT ) {
             ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
             throw errorMsg;
           } // if
 
           mScanner.GetToken( token );
-          mTokenString.push_back( token );
+          mTokenString->push_back( token );
           if ( token.mValue != "]" ) {
             ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
             throw errorMsg;
           } // if
         } // if
 
-        gCallStack.NewID( idToken.mValue, mTokenString );
+        gCallStack->NewID( idToken.mValue, mTokenString );
 
         mScanner.PeekToken( token );
       } // while
@@ -1135,14 +1175,14 @@ public:
     mScanner.PeekToken( token );
     if ( token.mValue == "{" ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       
       while ( Declaration() || Statement() ) {
        
       } // while
 
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( token.mValue != "}" ) {
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
         throw errorMsg;
@@ -1161,12 +1201,12 @@ public:
       mScanner.PeekToken( token );
       if ( token.mType == ID ) {
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
         queue<string> idQueue;
         idQueue.push( token.mValue );
         if ( Rest_of_Declarators( idQueue ) ) {
           while ( !idQueue.empty() ) {
-            gCallStack.NewID( idQueue.front(), mTokenString );
+            gCallStack->NewID( idQueue.front(), mTokenString );
             idQueue.pop();
           } // while
           
@@ -1190,7 +1230,7 @@ public:
     mScanner.PeekToken( token );
     if ( token.mValue == ";" ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       firstTokenMatch = true;
       success = true;
     } // if
@@ -1199,42 +1239,42 @@ public:
       mScanner.PeekToken( token );
       if ( token.mValue == ";" ) {
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
         success = true;
       } // if
     } // else if
     else if ( token.mType == RETURN ) {
       // RETURN [ expression ] ';'
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       firstTokenMatch = true;
       Expression();
       mScanner.PeekToken( token );
       if ( token.mValue == ";" ) {
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
         success = true;
       } // if
     } // if
     else if ( token.mType == IF ) {
       // IF '(' expression ')' statement [ ELSE statement ]
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       firstTokenMatch = true;
       mScanner.PeekToken( token );
       if ( token.mValue == "(" ) {
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
         if ( Expression() ) {
           mScanner.PeekToken( token );
           if ( token.mValue == ")" ) {
             mScanner.GetToken( token );
-            mTokenString.push_back( token );
+            mTokenString->push_back( token );
             if ( Statement() ) {
               mScanner.PeekToken( token );
               if ( token.mType == ELSE ) {
                 mScanner.GetToken( token );
-                mTokenString.push_back( token );
+                mTokenString->push_back( token );
                 if ( Statement() ) {
                   success = true;
                 } // if
@@ -1251,16 +1291,16 @@ public:
       // WHILE '(' expression ')' statement
       firstTokenMatch = true;
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       mScanner.PeekToken( token );
       if ( token.mValue == "(" ) {
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
         if ( Expression() ) {
           mScanner.PeekToken( token );
           if ( token.mValue == ")" ) {
             mScanner.GetToken( token );
-            mTokenString.push_back( token );
+            mTokenString->push_back( token );
             if ( Statement() ) {
               success = true;
             } // if
@@ -1272,25 +1312,25 @@ public:
       // DO statement WHILE '(' expression ')' ';'
       firstTokenMatch = true;
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( Statement() ) {
         mScanner.PeekToken( token );
         if ( token.mType == WHILE ) {
           mScanner.GetToken( token );
-          mTokenString.push_back( token );
+          mTokenString->push_back( token );
           mScanner.PeekToken( token );
           if ( token.mValue == "(" ) {
             mScanner.GetToken( token );
-            mTokenString.push_back( token );
+            mTokenString->push_back( token );
             if ( Expression() ) {
               mScanner.PeekToken( token );
               if ( token.mValue == ")" ) {
                 mScanner.GetToken( token );
-                mTokenString.push_back( token );
+                mTokenString->push_back( token );
                 mScanner.PeekToken( token );
                 if ( token.mValue == ";" ) {
                   mScanner.GetToken( token );
-                  mTokenString.push_back( token );
+                  mTokenString->push_back( token );
                   success = true;
                 } // if
               } // if
@@ -1300,13 +1340,13 @@ public:
       } // if
     } // if
     else {
-      gCallStack.NewRecord();
+      gCallStack->NewRecord();
       if ( Compound_statement() ) {
         firstTokenMatch = true;
         success = true;
       } // if
 
-      gCallStack.PopRecord();
+      gCallStack->PopRecord();
     } // else
 
     if ( firstTokenMatch && !success ) {
@@ -1315,38 +1355,39 @@ public:
       throw errorMsg;
     } // if
 
-    if ( mTokenString.size() == 4 && mTokenString[0].mValue == "Done"
-         && mTokenString[1].mValue == "(" && mTokenString[2].mValue == ")"
-         && mTokenString[3].mValue == ";" ) {
+    if ( mTokenString->size() == 4 && mTokenString->at( 0 ).mValue == "Done"
+         && mTokenString->at( 1 ).mValue == "(" && mTokenString->at( 2 ).mValue == ")"
+         && mTokenString->at( 3 ).mValue == ";" ) {
       ErrorMsg errorMsg( mScanner.mLine, QUIT_ERROR, "" );
       throw errorMsg;
     } // if
-    else if ( mTokenString.size() == 4 && mTokenString[0].mValue == "ListAllFunctions"
-         && mTokenString[1].mValue == "(" && mTokenString[2].mValue == ")"
-         && mTokenString[3].mValue == ";" ) {
-      gCallStack.ListAllFunctions();
+    else if ( mTokenString->size() == 4 && mTokenString->at( 0 ).mValue == "ListAllFunctions"
+              && mTokenString->at( 1 ).mValue == "(" && mTokenString->at( 2 ).mValue == ")"
+              && mTokenString->at( 3 ).mValue == ";" ) {
+      gCallStack->ListAllFunctions();
     } // if
-    else if ( mTokenString.size() == 4 && mTokenString[0].mValue == "ListAllVariables"
-         && mTokenString[1].mValue == "(" && mTokenString[2].mValue == ")"
-         && mTokenString[3].mValue == ";" ) {
-      gCallStack.ListAllVariables();
+    else if ( mTokenString->size() == 4 && mTokenString->at( 0 ).mValue == "ListAllVariables"
+              && mTokenString->at( 1 ).mValue == "(" && mTokenString->at( 2 ).mValue == ")"
+              && mTokenString->at( 3 ).mValue == ";" ) {
+      gCallStack->ListAllVariables();
     } // if
-    else if ( mTokenString.size() == 5 && mTokenString[0].mValue == "ListFunction"
-         && mTokenString[1].mValue == "(" && mTokenString[2].mType == CONSTANT
-         && mTokenString[3].mValue == ")" && mTokenString[4].mValue == ";" ) {
-      string name = mTokenString[2].mValue;
+    else if ( mTokenString->size() == 5 && mTokenString->at( 0 ).mValue == "ListFunction"
+              && mTokenString->at( 1 ).mValue == "(" && mTokenString->at( 2 ).mType == CONSTANT
+              && mTokenString->at( 3 ).mValue == ")" && mTokenString->at( 4 ).mValue == ";" ) {
+      string name = mTokenString->at( 2 ).mValue;
       name = name.substr( 1, name.size() - 2 );
-      gCallStack.ListFunction( name );
+      gCallStack->ListFunction( name );
     } // if
-    else if ( mTokenString.size() == 5 && mTokenString[0].mValue == "ListVariable"
-         && mTokenString[1].mValue == "(" && mTokenString[2].mType == CONSTANT
-         && mTokenString[3].mValue == ")" && mTokenString[4].mValue == ";" ) {
-      string name = mTokenString[2].mValue;
+    else if ( mTokenString->size() == 5 && mTokenString->at( 0 ).mValue == "ListVariable"
+              && mTokenString->at( 1 ).mValue == "(" && mTokenString->at( 2 ).mType == CONSTANT
+              && mTokenString->at( 3 ).mValue == ")" && mTokenString->at( 4 ).mValue == ";" ) {
+      string name = mTokenString->at( 2 ).mValue;
       name = name.substr( 1, name.size() - 2 );
-      gCallStack.ListVariable( name );
+      gCallStack->ListVariable( name );
     } // if
-
+    
     return success;
+    return false;
   } // Statement()
 
   bool Expression() {
@@ -1358,7 +1399,7 @@ public:
     mScanner.PeekToken( token );
     while ( token.mValue == "," ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( !Basic_expression() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1376,12 +1417,16 @@ public:
     if ( token.mType == ID ) {
       // Identifier rest_of_Identifier_started_basic_exp
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       idToken = token;
       idLine = mScanner.mLine;
     
       // because romce_and_romloe can be empty, don't need to check next token
-      if ( !gCallStack.IsDefined( idToken.mValue ) ) {
+      if ( !gCallStack->IsDefined( idToken.mValue ) ) {
+        // test
+        // ErrorMsg errorMsg( idLine, QUIT_ERROR, "" );
+        // throw errorMsg;
+
         ErrorMsg errorMsg( idLine, SEMANTIC_ERROR, idToken.mValue );
         throw errorMsg;
       } // if
@@ -1399,7 +1444,7 @@ public:
     else if ( token.mType == CONSTANT || token.mValue == "(" ) {
       // ( Constant | '(' expression ')' ) romce_and_romloe
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( token.mValue == "(" ) {
         if ( !Expression() ) {
           mScanner.GetToken( token );
@@ -1408,7 +1453,7 @@ public:
         } // if
 
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
         if ( token.mValue != ")" ) {
           ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
           throw errorMsg;
@@ -1438,11 +1483,11 @@ public:
     } // if
     else if ( token.mType == PP || token.mType == MM ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       mScanner.PeekToken( token );
       if ( token.mType == ID ) {
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
         if ( Rest_of_PPMM_Identifier_started_basic_exp() ) {
           return true;
         } // if
@@ -1462,14 +1507,14 @@ public:
     if ( token.mValue == "(" ) {
       // '(' [ actual_parameter_list ] ')' romce_and_romloe
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       
       Actual_parameter_list();
 
       mScanner.PeekToken( token );
       if ( token.mValue == ")" ) {
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
         if ( Rest_of_maybe_conditional_exp_and_rest_of_maybe_logical_OR_exp() ) {
           return true;
         } // if
@@ -1484,7 +1529,7 @@ public:
       if ( token.mValue == "[" ) {
         // [ '[' expression ']' ]
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
         if ( !Expression() ) {
           mScanner.GetToken( token );
           ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1492,7 +1537,7 @@ public:
         } // if 
 
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
         if ( token.mValue != "]" ) {
           ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
           throw errorMsg;
@@ -1508,7 +1553,7 @@ public:
         mScanner.PeekToken( token );
         if ( token.mType == PP || token.mType == MM ) {
           mScanner.GetToken( token );
-          mTokenString.push_back( token );
+          mTokenString->push_back( token );
         } // if
 
         if ( Rest_of_maybe_conditional_exp_and_rest_of_maybe_logical_OR_exp() ) {
@@ -1530,7 +1575,7 @@ public:
     mScanner.PeekToken( token );
     if ( token.mValue == "[" ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( !Expression() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1538,7 +1583,7 @@ public:
       } // if
 
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( token.mValue != "]" ) {
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
         throw errorMsg;
@@ -1565,7 +1610,7 @@ public:
     mScanner.PeekToken( token );
     if ( token.mValue == "+" || token.mValue == "-" || token.mValue == "!" ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       return true;
     } // if
 
@@ -1582,7 +1627,7 @@ public:
     while ( token.mValue == "," ) {
       // { ',' basic_expression }
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( !Basic_expression() ) {
         // throw error
         mScanner.GetToken( token );
@@ -1602,7 +1647,7 @@ public:
     if ( token.mValue == "=" || token.mType == TE || token.mType == RE
          || token.mType == PE || token.mType == ME ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       return true;
     } // if
 
@@ -1618,12 +1663,12 @@ public:
     mScanner.PeekToken( token );
     if ( token.mValue == "?" ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( Basic_expression() ) {
         mScanner.PeekToken( token );
         if ( token.mValue == ":" ) {
           mScanner.GetToken( token );
-          mTokenString.push_back( token );
+          mTokenString->push_back( token );
           if ( Basic_expression() ) {
             return true;
           } // if
@@ -1648,7 +1693,7 @@ public:
     mScanner.PeekToken( token );
     while ( token.mType == OR ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( !Maybe_logical_AND_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1671,7 +1716,7 @@ public:
     mScanner.PeekToken( token );
     while ( token.mType == AND ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( !Maybe_bit_OR_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1693,7 +1738,7 @@ public:
     mScanner.PeekToken( token );
     while ( token.mType == AND ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( !Maybe_bit_OR_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1715,7 +1760,7 @@ public:
     mScanner.PeekToken( token );
     while ( token.mValue == "|" ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( !Maybe_bit_ex_OR_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1737,7 +1782,7 @@ public:
     mScanner.PeekToken( token );
     while ( token.mValue == "|" ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( !Maybe_bit_ex_OR_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1759,7 +1804,7 @@ public:
     mScanner.PeekToken( token );
     while ( token.mValue == "^" ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( !Maybe_bit_AND_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1781,7 +1826,7 @@ public:
     mScanner.PeekToken( token );
     while ( token.mValue == "^" ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( !Maybe_bit_AND_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1803,7 +1848,7 @@ public:
     mScanner.PeekToken( token );
     while ( token.mValue == "&" ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( !Maybe_equality_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1825,7 +1870,7 @@ public:
     mScanner.PeekToken( token );
     while ( token.mValue == "&" ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( !Maybe_equality_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1847,7 +1892,7 @@ public:
     mScanner.PeekToken( token );
     while ( token.mType == EQ || token.mType == NEQ ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( !Maybe_relational_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1869,7 +1914,7 @@ public:
     mScanner.PeekToken( token );
     while ( token.mType == EQ || token.mType == NEQ ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( !Maybe_relational_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1892,7 +1937,7 @@ public:
     while ( token.mType == LE || token.mType == GE
             || token.mValue == "<" || token.mValue == ">" ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( !Maybe_shift_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1915,7 +1960,7 @@ public:
     while ( token.mType == LE || token.mType == GE
             || token.mValue == "<" || token.mValue == ">" ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( !Maybe_shift_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1937,7 +1982,7 @@ public:
     mScanner.PeekToken( token );
     while ( token.mType == LS || token.mType == RS ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( !Maybe_additive_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1959,7 +2004,7 @@ public:
     mScanner.PeekToken( token );
     while ( token.mType == LS || token.mType == RS ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( !Maybe_additive_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1981,7 +2026,7 @@ public:
     mScanner.PeekToken( token );
     while ( token.mValue == "+" || token.mValue == "-" ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( !Maybe_mult_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -2003,7 +2048,7 @@ public:
     mScanner.PeekToken( token );
     while ( token.mValue == "+" || token.mValue == "-" ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( !Maybe_mult_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -2037,7 +2082,7 @@ public:
     while ( token.mValue == "*" || token.mValue == "/"
             || token.mValue == "%" ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( !Unary_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -2071,26 +2116,26 @@ public:
     } // else if
     else if ( token.mType == PP || token.mType == MM ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       mScanner.PeekToken( token );
       if ( token.mType == ID ) {
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
         idToken = token;
         int idLine = mScanner.mLine;
-        if ( !gCallStack.IsDefined( idToken.mValue ) ) {
+        if ( !gCallStack->IsDefined( idToken.mValue ) ) {
           ErrorMsg errorMsg( idLine, SEMANTIC_ERROR, idToken.mValue );
           throw errorMsg;
         } // if
 
         if ( token.mValue == "[" ) {
           mScanner.GetToken( token );
-          mTokenString.push_back( token );
+          mTokenString->push_back( token );
           if ( Expression() ) {
             mScanner.PeekToken( token );
             if ( token.mValue == "]" ) {
               mScanner.GetToken( token );
-              mTokenString.push_back( token );
+              mTokenString->push_back( token );
               return true;
             } // if
           } // if
@@ -2122,17 +2167,17 @@ public:
     mScanner.PeekToken( token );
     if ( token.mType == CONSTANT ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       return true;
     } // if
     else if ( token.mValue == "(" ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( Expression() ) {
         mScanner.PeekToken( token );
         if ( token.mValue == ")" ) {
           mScanner.GetToken( token );
-          mTokenString.push_back( token );
+          mTokenString->push_back( token );
           return true;
         } // if
       } // if
@@ -2141,10 +2186,10 @@ public:
     } // else if
     else if ( token.mType == ID ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       idToken = token;
       idLine = mScanner.mLine;
-      if ( !gCallStack.IsDefined( idToken.mValue ) ) {
+      if ( !gCallStack->IsDefined( idToken.mValue ) ) {
         ErrorMsg errorMsg( idLine, SEMANTIC_ERROR, idToken.mValue );
         throw errorMsg;
       } // if
@@ -2152,25 +2197,25 @@ public:
       mScanner.PeekToken( token );
       if ( token.mValue == "(" ) {
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
 
         Actual_parameter_list();
         
         mScanner.PeekToken( token );
         if ( token.mValue == ")" ) {
           mScanner.GetToken( token );
-          mTokenString.push_back( token );
+          mTokenString->push_back( token );
           success = true;
         } // if
       } // if
       else if ( token.mValue == "[" ) {
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
         if ( Expression() ) {
           mScanner.PeekToken( token );
           if ( token.mValue == "]" ) {
             mScanner.GetToken( token );
-            mTokenString.push_back( token );
+            mTokenString->push_back( token );
             success = true;
           } // if
         } // if
@@ -2201,10 +2246,10 @@ public:
     mScanner.PeekToken( token );
     if ( token.mType == ID ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       idToken = token;
       idLine = mScanner.mLine;
-      if ( !gCallStack.IsDefined( idToken.mValue ) ) {
+      if ( !gCallStack->IsDefined( idToken.mValue ) ) {
         ErrorMsg errorMsg( idLine, SEMANTIC_ERROR, idToken.mValue );
         throw errorMsg;
       } // if
@@ -2212,12 +2257,12 @@ public:
       mScanner.PeekToken( token );
       if ( token.mValue == "(" ) {
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
 
         Actual_parameter_list();
         
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
         if ( token.mValue != ")" ) {
           ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
           throw errorMsg;
@@ -2225,7 +2270,7 @@ public:
       } // if
       else if ( token.mValue == "[" ) {
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
         if ( !Expression() ) {
           mScanner.GetToken( token );
           ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -2233,7 +2278,7 @@ public:
         } // if
 
         mScanner.GetToken( token );
-        mTokenString.push_back( token );
+        mTokenString->push_back( token );
         if ( token.mValue != "]" ) {
           ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
           throw errorMsg;
@@ -2242,7 +2287,7 @@ public:
         mScanner.PeekToken( token );
         if ( token.mType == PP || token.mType == MM ) {
           mScanner.GetToken( token );
-          mTokenString.push_back( token );
+          mTokenString->push_back( token );
         } // if
       } // if
 
@@ -2250,17 +2295,17 @@ public:
     } // if
     else if ( token.mType == CONSTANT ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       return true;
     } // else if
     else if ( token.mValue == "(" ) {
       mScanner.GetToken( token );
-      mTokenString.push_back( token );
+      mTokenString->push_back( token );
       if ( Expression() ) {
         mScanner.PeekToken( token );
         if ( token.mValue == ")" ) {
           mScanner.GetToken( token );
-          mTokenString.push_back( token );
+          mTokenString->push_back( token );
           return true;
         } // if
       } // if 
@@ -2276,13 +2321,15 @@ public:
 }; // class Parser
 
 int main() {
-  int testNum = 0;
-  cin >> testNum ;
+  cin >> gTestNum ;
   ReadLine();
-
+  // cout << "after Init: " << gCallStack.mCallStack.size();
+  gCallStack = new CallStack();
+  // cout << gCallStack->mCallStack.size();
   cout << "Our-C running ...\n";
   bool quit = false;
   Parser parser;
+  
   while ( !quit ) {
     try {
       parser.User_Input();
@@ -2301,15 +2348,22 @@ int main() {
         } // if
         else if ( errorMsg.mType == SEMANTIC_ERROR ) {
           cout << " : undefined identifier : \'";
+          
+          
         } // if
 
         cout << errorMsg.mToken + "\'\n";
         parser.mScanner.ReadLine();
-        gCallStack.PopExceptBase();
+        
+
+        gCallStack->PopExceptBase();
+        
+        
       } // else
     } // catch
   } // while
 
   cout << "Our-C exited ...";
+  delete gCallStack;
   return 0;
 } // main()
