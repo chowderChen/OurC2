@@ -438,18 +438,58 @@ public:
         getTokenSuces = true;
       } // else if
       else if ( ch == '\'' ) {
+        PeekChar( ch );
+        // ''
+        if ( ch == '\'' ) {
+          ErrorMsg errorMsg( mLine, LEXICAL_ERROR, '\'' );
+          throw errorMsg;
+        } // if
+
+        
+        if ( ch == '\\' ) {
+          GetChar( ch );
+          tokenValue += ch;
+
+          PeekChar( ch );
+        } // if
+
+        if ( ch == '\n' || ch == '\r' ) {
+          ErrorMsg errorMsg( mLine, LEXICAL_ERROR, '\'' );
+          throw errorMsg;
+        } // if
+        
+        
         GetChar( ch );
         tokenValue += ch;
+
+        PeekChar( ch );
+        if ( ch != '\'' ) {
+          ErrorMsg errorMsg( mLine, LEXICAL_ERROR, '\'' );
+          throw errorMsg;
+        } // if
+
         GetChar( ch );
         tokenValue += ch;
+
         token.mType = CONSTANT;
         getTokenSuces = true;
       } // else if
       else if ( ch == '\"' ) {
-        while ( GetChar( ch ) && ch != '\"' ) {
+        PeekChar( ch );
+        while ( ch != '\"' ) {
+          
+          if ( ch == '\n' || ch == '\r' ) {
+            ErrorMsg errorMsg( mLine, LEXICAL_ERROR, '\"' );
+            throw errorMsg;
+          } // if
+
+          GetChar( ch );
           tokenValue += ch;
+
+          PeekChar( ch );
         } // while
 
+        GetChar( ch );
         tokenValue += ch;
         token.mType = CONSTANT;
         getTokenSuces = true;
@@ -1020,7 +1060,9 @@ public:
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
         throw errorMsg;
       } // if
-    } // while
+
+      mScanner.PeekToken( token );
+    } // while ( token.mValue == "," )
 
     mScanner.PeekToken( token );
     if ( token.mValue == ";" ) {
@@ -1076,6 +1118,7 @@ public:
     Token token, idToken;
     bool matchFirstToken = false, success = false;
     if ( Type_specifier() ) {
+
       mScanner.PeekToken( token );
       if ( token.mValue == "&" ) {
         mScanner.GetToken( token );
@@ -1118,6 +1161,7 @@ public:
       while ( token.mValue == "," ) {
         mScanner.GetToken( token );
         mTokenString->push_back( token );
+
         if ( !Type_specifier() ) {
           ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
           throw errorMsg;
@@ -1161,7 +1205,7 @@ public:
         gCallStack->NewID( idToken.mValue, mTokenString );
 
         mScanner.PeekToken( token );
-      } // while
+      } // while ( token.mValue == "," )
 
       return true;
     } // if
@@ -1202,6 +1246,7 @@ public:
       if ( token.mType == ID ) {
         mScanner.GetToken( token );
         mTokenString->push_back( token );
+
         queue<string> idQueue;
         idQueue.push( token.mValue );
         if ( Rest_of_Declarators( idQueue ) ) {
@@ -1212,12 +1257,12 @@ public:
           
           return true;
         } // if
-      } // if
+      } // if ( token.mType == ID )
 
       mScanner.GetToken( token );
       ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
       throw errorMsg;
-    } // if
+    } // if ( Type_specifier() )
 
     return false;
   } // Declaration()
@@ -1248,7 +1293,9 @@ public:
       mScanner.GetToken( token );
       mTokenString->push_back( token );
       firstTokenMatch = true;
+
       Expression();
+      
       mScanner.PeekToken( token );
       if ( token.mValue == ";" ) {
         mScanner.GetToken( token );
@@ -1261,28 +1308,33 @@ public:
       mScanner.GetToken( token );
       mTokenString->push_back( token );
       firstTokenMatch = true;
+
       mScanner.PeekToken( token );
       if ( token.mValue == "(" ) {
         mScanner.GetToken( token );
         mTokenString->push_back( token );
+
         if ( Expression() ) {
           mScanner.PeekToken( token );
           if ( token.mValue == ")" ) {
             mScanner.GetToken( token );
             mTokenString->push_back( token );
+
             if ( Statement() ) {
               mScanner.PeekToken( token );
               if ( token.mType == ELSE ) {
                 mScanner.GetToken( token );
                 mTokenString->push_back( token );
-                if ( Statement() ) {
-                  success = true;
+
+                if ( !Statement() ) {
+                  mScanner.GetToken( token );
+                  ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
+                  throw errorMsg;
                 } // if
-              } // if
-              else {
-                success = true;
-              } // else
-            } // if
+              } // if ( token.mType == ELSE )
+              
+              success = true;
+            } // if ( Statement() )
           } // if
         } // if
       } // if
@@ -1292,15 +1344,18 @@ public:
       firstTokenMatch = true;
       mScanner.GetToken( token );
       mTokenString->push_back( token );
+
       mScanner.PeekToken( token );
       if ( token.mValue == "(" ) {
         mScanner.GetToken( token );
         mTokenString->push_back( token );
+
         if ( Expression() ) {
           mScanner.PeekToken( token );
           if ( token.mValue == ")" ) {
             mScanner.GetToken( token );
             mTokenString->push_back( token );
+
             if ( Statement() ) {
               success = true;
             } // if
@@ -1313,20 +1368,24 @@ public:
       firstTokenMatch = true;
       mScanner.GetToken( token );
       mTokenString->push_back( token );
+
       if ( Statement() ) {
         mScanner.PeekToken( token );
         if ( token.mType == WHILE ) {
           mScanner.GetToken( token );
           mTokenString->push_back( token );
+
           mScanner.PeekToken( token );
           if ( token.mValue == "(" ) {
             mScanner.GetToken( token );
             mTokenString->push_back( token );
+
             if ( Expression() ) {
               mScanner.PeekToken( token );
               if ( token.mValue == ")" ) {
                 mScanner.GetToken( token );
                 mTokenString->push_back( token );
+
                 mScanner.PeekToken( token );
                 if ( token.mValue == ";" ) {
                   mScanner.GetToken( token );
@@ -1391,6 +1450,7 @@ public:
   } // Statement()
 
   bool Expression() {
+    // basic_expression { ',' basic_expression }
     if ( !Basic_expression() ) {
       return false;  
     } // if
@@ -1400,19 +1460,23 @@ public:
     while ( token.mValue == "," ) {
       mScanner.GetToken( token );
       mTokenString->push_back( token );
+
       if ( !Basic_expression() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
         throw errorMsg;
       } // if
+      
+      mScanner.PeekToken( token );
     } // while
 
     return true;
   } // Expression()
 
-  bool Basic_expression() {
+  bool Basic_expression(  ) {
     Token token, idToken;
     int idLine = 0;
+
     mScanner.PeekToken( token );
     if ( token.mType == ID ) {
       // Identifier rest_of_Identifier_started_basic_exp
@@ -1420,19 +1484,17 @@ public:
       mTokenString->push_back( token );
       idToken = token;
       idLine = mScanner.mLine;
-    
-      // because romce_and_romloe can be empty, don't need to check next token
-      if ( !gCallStack->IsDefined( idToken.mValue ) ) {
-        // test
-        // ErrorMsg errorMsg( idLine, QUIT_ERROR, "" );
-        // throw errorMsg;
 
+      // because romce_and_romloe can be empty
+      // don't need to check next token?
+      if ( !gCallStack->IsDefined( idToken.mValue ) ) {
         ErrorMsg errorMsg( idLine, SEMANTIC_ERROR, idToken.mValue );
         throw errorMsg;
       } // if
-      
 
-      if ( Rest_of_Identifier_started_basic_exp() ) {
+      if ( Rest_of_Identifier_started_basic_exp() ) {  
+        
+        
         return true;
       } // if
       else {
@@ -1440,6 +1502,40 @@ public:
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
         throw errorMsg;
       } // else
+    } // if
+    else if ( token.mType == PP || token.mType == MM ) {
+      mScanner.GetToken( token );
+      mTokenString->push_back( token );
+      mScanner.PeekToken( token );
+      if ( token.mType == ID ) {
+        mScanner.GetToken( token );
+        mTokenString->push_back( token );
+
+        if ( !gCallStack->IsDefined( token.mValue ) ) {
+          ErrorMsg errorMsg( mScanner.mLine, SEMANTIC_ERROR, token.mValue );
+          throw errorMsg;
+        } // if
+
+        if ( Rest_of_PPMM_Identifier_started_basic_exp() ) {
+          return true;
+        } // if
+      } // if
+      
+      mScanner.GetToken( token );
+      ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
+      throw errorMsg;
+    } // if
+    else if ( Sign() ) {
+      while ( Sign() ) {
+
+      } // while
+
+      if ( !Signed_unary_exp() || !Rest_of_maybe_conditional_exp_and_rest_of_maybe_logical_OR_exp() ) {
+        ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
+        throw errorMsg;
+      } // if
+
+      return true;
     } // if
     else if ( token.mType == CONSTANT || token.mValue == "(" ) {
       // ( Constant | '(' expression ')' ) romce_and_romloe
@@ -1465,38 +1561,13 @@ public:
         return true;
       } // if
       else {
+        mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
         throw errorMsg;
       } // else
     } // else if
-    else if ( Sign() ) {
-      while ( Sign() ) {
-
-      } // while
-
-      if ( !Signed_unary_exp() || !Rest_of_maybe_conditional_exp_and_rest_of_maybe_logical_OR_exp() ) {
-        ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
-        throw errorMsg;
-      } // if
-
-      return true;
-    } // if
-    else if ( token.mType == PP || token.mType == MM ) {
-      mScanner.GetToken( token );
-      mTokenString->push_back( token );
-      mScanner.PeekToken( token );
-      if ( token.mType == ID ) {
-        mScanner.GetToken( token );
-        mTokenString->push_back( token );
-        if ( Rest_of_PPMM_Identifier_started_basic_exp() ) {
-          return true;
-        } // if
-      } // if
-      
-      mScanner.GetToken( token );
-      ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
-      throw errorMsg;
-    } // if
+    
+    
 
     return false;
   } // Basic_expression()
@@ -1515,6 +1586,7 @@ public:
       if ( token.mValue == ")" ) {
         mScanner.GetToken( token );
         mTokenString->push_back( token );
+        
         if ( Rest_of_maybe_conditional_exp_and_rest_of_maybe_logical_OR_exp() ) {
           return true;
         } // if
@@ -1525,11 +1597,19 @@ public:
       throw errorMsg;
     } // if ( token.mValue == "(" )
     else {
+      /*
+      [ '[' expression ']' ]
+      ( assignment_operator basic_expression
+        |
+        [ PP | MM ] romce_and_romloe
+      )
+      */
       mScanner.PeekToken( token );
       if ( token.mValue == "[" ) {
         // [ '[' expression ']' ]
         mScanner.GetToken( token );
         mTokenString->push_back( token );
+
         if ( !Expression() ) {
           mScanner.GetToken( token );
           ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1548,6 +1628,11 @@ public:
         if ( Basic_expression() ) {
           return true;
         } // if
+        else {
+          mScanner.GetToken( token );
+          ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
+          throw errorMsg;
+        } // else
       } // if
       else {
         mScanner.PeekToken( token );
@@ -1560,10 +1645,6 @@ public:
           return true;
         } // if
       } // else
-
-      mScanner.GetToken( token );
-      ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
-      throw errorMsg;
     } // else
 
     return false;
@@ -1576,6 +1657,7 @@ public:
     if ( token.mValue == "[" ) {
       mScanner.GetToken( token );
       mTokenString->push_back( token );
+
       if ( !Expression() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1628,6 +1710,7 @@ public:
       // { ',' basic_expression }
       mScanner.GetToken( token );
       mTokenString->push_back( token );
+
       if ( !Basic_expression() ) {
         // throw error
         mScanner.GetToken( token );
@@ -1655,6 +1738,7 @@ public:
   } // Assignment_Operator()
 
   bool Rest_of_maybe_conditional_exp_and_rest_of_maybe_logical_OR_exp() {
+    //  rest_of_maybe_logical_OR_exp [ '?' basic_expression ':' basic_expression ]
     if ( !Rest_of_maybe_logical_OR_exp() ) {
       return false;
     } // if
@@ -1664,11 +1748,13 @@ public:
     if ( token.mValue == "?" ) {
       mScanner.GetToken( token );
       mTokenString->push_back( token );
+
       if ( Basic_expression() ) {
         mScanner.PeekToken( token );
         if ( token.mValue == ":" ) {
           mScanner.GetToken( token );
           mTokenString->push_back( token );
+
           if ( Basic_expression() ) {
             return true;
           } // if
@@ -1678,7 +1764,7 @@ public:
       mScanner.GetToken( token );
       ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
       throw errorMsg;
-    } // if
+    } // if ( token.mValue == "?" )
 
     return true;
   } // Rest_of_maybe_conditional_exp_and_rest_of_maybe_logical_OR_exp()
@@ -1694,6 +1780,7 @@ public:
     while ( token.mType == OR ) {
       mScanner.GetToken( token );
       mTokenString->push_back( token );
+
       if ( !Maybe_logical_AND_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1717,6 +1804,7 @@ public:
     while ( token.mType == AND ) {
       mScanner.GetToken( token );
       mTokenString->push_back( token );
+      
       if ( !Maybe_bit_OR_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1739,6 +1827,7 @@ public:
     while ( token.mType == AND ) {
       mScanner.GetToken( token );
       mTokenString->push_back( token );
+
       if ( !Maybe_bit_OR_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1761,6 +1850,7 @@ public:
     while ( token.mValue == "|" ) {
       mScanner.GetToken( token );
       mTokenString->push_back( token );
+
       if ( !Maybe_bit_ex_OR_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1783,6 +1873,7 @@ public:
     while ( token.mValue == "|" ) {
       mScanner.GetToken( token );
       mTokenString->push_back( token );
+
       if ( !Maybe_bit_ex_OR_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1805,6 +1896,7 @@ public:
     while ( token.mValue == "^" ) {
       mScanner.GetToken( token );
       mTokenString->push_back( token );
+
       if ( !Maybe_bit_AND_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1827,6 +1919,7 @@ public:
     while ( token.mValue == "^" ) {
       mScanner.GetToken( token );
       mTokenString->push_back( token );
+
       if ( !Maybe_bit_AND_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1849,6 +1942,7 @@ public:
     while ( token.mValue == "&" ) {
       mScanner.GetToken( token );
       mTokenString->push_back( token );
+
       if ( !Maybe_equality_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1871,6 +1965,7 @@ public:
     while ( token.mValue == "&" ) {
       mScanner.GetToken( token );
       mTokenString->push_back( token );
+
       if ( !Maybe_equality_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1915,6 +2010,7 @@ public:
     while ( token.mType == EQ || token.mType == NEQ ) {
       mScanner.GetToken( token );
       mTokenString->push_back( token );
+
       if ( !Maybe_relational_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1938,6 +2034,7 @@ public:
             || token.mValue == "<" || token.mValue == ">" ) {
       mScanner.GetToken( token );
       mTokenString->push_back( token );
+
       if ( !Maybe_shift_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1961,6 +2058,7 @@ public:
             || token.mValue == "<" || token.mValue == ">" ) {
       mScanner.GetToken( token );
       mTokenString->push_back( token );
+
       if ( !Maybe_shift_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -1983,6 +2081,7 @@ public:
     while ( token.mType == LS || token.mType == RS ) {
       mScanner.GetToken( token );
       mTokenString->push_back( token );
+
       if ( !Maybe_additive_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -2005,6 +2104,7 @@ public:
     while ( token.mType == LS || token.mType == RS ) {
       mScanner.GetToken( token );
       mTokenString->push_back( token );
+
       if ( !Maybe_additive_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -2049,6 +2149,7 @@ public:
     while ( token.mValue == "+" || token.mValue == "-" ) {
       mScanner.GetToken( token );
       mTokenString->push_back( token );
+
       if ( !Maybe_mult_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -2083,6 +2184,7 @@ public:
             || token.mValue == "%" ) {
       mScanner.GetToken( token );
       mTokenString->push_back( token );
+
       if ( !Unary_exp() ) {
         mScanner.GetToken( token );
         ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
@@ -2096,13 +2198,15 @@ public:
   } // Rest_of_maybe_mult_exp()
 
   bool Unary_exp() {
+    /*
+    sign { sign } signed_unary_exp
+    | unsigned_unary_exp
+    | ( PP | MM ) Identifier [ '[' expression ']' ]
+    */
     Token token, idToken;
     bool error = false;
     mScanner.PeekToken( token );
-    if ( Unsigned_unary_exp() ) {
-      return true;
-    } // if
-    else if ( Sign() ) {
+    if ( Sign() ) {
       while ( Sign() ) {
 
       } // while
@@ -2113,24 +2217,31 @@ public:
       else {
         error = true;
       } // else
-    } // else if
+    } // if
+    else if ( Unsigned_unary_exp() ) {
+      return true;
+    } // if
     else if ( token.mType == PP || token.mType == MM ) {
       mScanner.GetToken( token );
       mTokenString->push_back( token );
+      
       mScanner.PeekToken( token );
       if ( token.mType == ID ) {
         mScanner.GetToken( token );
         mTokenString->push_back( token );
         idToken = token;
         int idLine = mScanner.mLine;
+
         if ( !gCallStack->IsDefined( idToken.mValue ) ) {
           ErrorMsg errorMsg( idLine, SEMANTIC_ERROR, idToken.mValue );
           throw errorMsg;
         } // if
 
+        mScanner.PeekToken( token );
         if ( token.mValue == "[" ) {
           mScanner.GetToken( token );
           mTokenString->push_back( token );
+
           if ( Expression() ) {
             mScanner.PeekToken( token );
             if ( token.mValue == "]" ) {
@@ -2140,6 +2251,7 @@ public:
             } // if
           } // if
 
+          // not Expression() or not "]"
           error = true;
         } // if
         else {
@@ -2160,31 +2272,20 @@ public:
   } // Unary_exp()
 
   bool Signed_unary_exp() {
+  /*
+     Identifier [ '(' [ actual_parameter_list ] ')'
+                  |
+                  '[' expression ']'
+                ]
+     | Constant
+     | '(' expression ')'
+  */
     Token token, idToken;
     int idLine = 0;
     bool error = false;
     bool success = false;
     mScanner.PeekToken( token );
-    if ( token.mType == CONSTANT ) {
-      mScanner.GetToken( token );
-      mTokenString->push_back( token );
-      return true;
-    } // if
-    else if ( token.mValue == "(" ) {
-      mScanner.GetToken( token );
-      mTokenString->push_back( token );
-      if ( Expression() ) {
-        mScanner.PeekToken( token );
-        if ( token.mValue == ")" ) {
-          mScanner.GetToken( token );
-          mTokenString->push_back( token );
-          return true;
-        } // if
-      } // if
-
-      error = true;
-    } // else if
-    else if ( token.mType == ID ) {
+    if ( token.mType == ID ) {
       mScanner.GetToken( token );
       mTokenString->push_back( token );
       idToken = token;
@@ -2205,7 +2306,7 @@ public:
         if ( token.mValue == ")" ) {
           mScanner.GetToken( token );
           mTokenString->push_back( token );
-          success = true;
+          return true;
         } // if
       } // if
       else if ( token.mValue == "[" ) {
@@ -2216,20 +2317,38 @@ public:
           if ( token.mValue == "]" ) {
             mScanner.GetToken( token );
             mTokenString->push_back( token );
-            success = true;
+            return true;
           } // if
         } // if
       } // if
       else {
-        success = true;
+        return true;
       } // else
 
-      if ( success ) {
-        return true;
+      // if encounter ID but didn't pass any correct path
+      error = true;
+    } // if
+    else if ( token.mType == CONSTANT ) {
+      mScanner.GetToken( token );
+      mTokenString->push_back( token );
+      return true;
+    } // if
+    else if ( token.mValue == "(" ) {
+      mScanner.GetToken( token );
+      mTokenString->push_back( token );
+
+      if ( Expression() ) {
+        mScanner.PeekToken( token );
+        if ( token.mValue == ")" ) {
+          mScanner.GetToken( token );
+          mTokenString->push_back( token );
+          return true;
+        } // if
       } // if
 
       error = true;
     } // else if
+    
 
     if ( error ) {
       mScanner.GetToken( token );
@@ -2241,14 +2360,24 @@ public:
   } // Signed_unary_exp()
 
   bool Unsigned_unary_exp() {
+    /*    
+    Identifier [ '(' [ actual_parameter_list ] ')'
+                 |
+                 [ '[' expression ']' ] [ ( PP | MM ) ]
+               ]
+    | Constant
+    | '(' expression ')'
+    */
     Token token, idToken;
     int idLine = 0;
+
     mScanner.PeekToken( token );
     if ( token.mType == ID ) {
       mScanner.GetToken( token );
       mTokenString->push_back( token );
       idToken = token;
       idLine = mScanner.mLine;
+
       if ( !gCallStack->IsDefined( idToken.mValue ) ) {
         ErrorMsg errorMsg( idLine, SEMANTIC_ERROR, idToken.mValue );
         throw errorMsg;
@@ -2268,28 +2397,31 @@ public:
           throw errorMsg;
         } // if
       } // if
-      else if ( token.mValue == "[" ) {
-        mScanner.GetToken( token );
-        mTokenString->push_back( token );
-        if ( !Expression() ) {
+      else {
+        if ( token.mValue == "[" ) {
           mScanner.GetToken( token );
-          ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
-          throw errorMsg;
-        } // if
+          mTokenString->push_back( token );
 
-        mScanner.GetToken( token );
-        mTokenString->push_back( token );
-        if ( token.mValue != "]" ) {
-          ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
-          throw errorMsg;
-        } // if
+          if ( !Expression() ) {
+            mScanner.GetToken( token );
+            ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
+            throw errorMsg;
+          } // if
+
+          mScanner.GetToken( token );
+          mTokenString->push_back( token );
+          if ( token.mValue != "]" ) {
+            ErrorMsg errorMsg( mScanner.mLine, SYNTACTICAL_ERROR, token.mValue );
+            throw errorMsg;
+          } // if 
+        } // if ( token.mValue == "[" )
 
         mScanner.PeekToken( token );
         if ( token.mType == PP || token.mType == MM ) {
           mScanner.GetToken( token );
           mTokenString->push_back( token );
-        } // if
-      } // if
+        } // if 
+      } // else
 
       return true;
     } // if
@@ -2301,6 +2433,7 @@ public:
     else if ( token.mValue == "(" ) {
       mScanner.GetToken( token );
       mTokenString->push_back( token );
+      
       if ( Expression() ) {
         mScanner.PeekToken( token );
         if ( token.mValue == ")" ) {
@@ -2323,6 +2456,10 @@ public:
 int main() {
   cin >> gTestNum ;
   ReadLine();
+  if ( gTestNum == 1 ) {
+    // return 0;
+  } // if
+
   // cout << "after Init: " << gCallStack.mCallStack.size();
   gCallStack = new CallStack();
   // cout << gCallStack->mCallStack.size();
@@ -2354,10 +2491,8 @@ int main() {
 
         cout << errorMsg.mToken + "\'\n";
         parser.mScanner.ReadLine();
-        
 
         gCallStack->PopExceptBase();
-        
         
       } // else
     } // catch
